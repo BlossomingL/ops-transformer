@@ -433,6 +433,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     DoSplit();
     fBaseParams.isSmallSD = IsSmallSDEligible();
     if (fBaseParams.isSmallSD) {
+        auto fBaseParamsBackup = fBaseParams;
+        auto tndBaseInfoBackup = tndBaseInfo;
         ResetSmallSDDerivedState();
         BuildSmallSDTaskRange();
         auto smallSDRet = ValidateSmallSDInvariant();
@@ -446,6 +448,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
             DetermineMode(fBaseParams);
             return ge::GRAPH_SUCCESS;
         }
+        fBaseParams = fBaseParamsBackup;
+        tndBaseInfo = tndBaseInfoBackup;
         fBaseParams.isSmallSD = false;
     }
 
@@ -1340,6 +1344,7 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsSmallSDEligible() const
     const bool routeOk = fBaseParams.splitAxis == SplitAxisEnum::BN2 && fBaseParams.n1 == fBaseParams.n2 &&
                          fBaseParams.g == 1;
     const bool sparseOk = !fBaseParams.isSparse && fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK);
+    const bool taskOk = fBaseParams.b > 0 && fBaseParams.n2 > 0 && fBaseParams.aicNum > 0;
     const bool derivedOk = !fBaseParams.isDeterministic && !fBaseParams.isBn2MultiBlk && !fBaseParams.isNzOut &&
                            !fBaseParams.enableSwizzle && fBaseParams.tailZeroCount == 0;
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
@@ -1349,7 +1354,7 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsSmallSDEligible() const
         }
     }
     return isSupportedLayout && isSupportedDtype && isSameOutputDtype && noOptional && shapeOk && routeOk && sparseOk &&
-           derivedOk;
+           taskOk && derivedOk;
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::ResetSmallSDDerivedState()
@@ -1610,6 +1615,15 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::BuildSmallSDTilingDa
     smallSDBaseParam_.workspaceBaseOffset = RESERVED_WORKSPACE_SIZE;
     smallSDBaseParam_.workspaceSize = RESERVED_WORKSPACE_SIZE;
     smallSDBaseParam_.scaleValue = fBaseParams.scaleValue;
+    smallSDBaseParam_.bSize = static_cast<uint32_t>(fBaseParams.b);
+    smallSDBaseParam_.n1Size = static_cast<uint32_t>(fBaseParams.n1);
+    smallSDBaseParam_.gSize = static_cast<uint32_t>(fBaseParams.g);
+    smallSDBaseParam_.actualDv = static_cast<uint32_t>(fBaseParams.d1);
+    smallSDBaseParam_.inputDtype = static_cast<uint32_t>(fBaseParams.inputDtype);
+    smallSDBaseParam_.outputDtype = static_cast<uint32_t>(fBaseParams.outDtype);
+    smallSDBaseParam_.calcTypeSize = FP32_BYTES;
+    smallSDBaseParam_.sparseMode = fBaseParams.sparseMode;
+    smallSDBaseParam_.isSingleTask = smallSDBaseParam_.validTaskCount == 1;
 
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
         OP_CHECK_IF(!BuildSmallSDTndOffsets(),
@@ -2308,7 +2322,8 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         tndSwizzleParam_->set_tndS2BlockPrefixSum(tndBaseInfo.tndS2BlockPrefixSum);
         tndSwizzleParam_->set_tndSwizzleS1S2PrefixSum(tndBaseInfo.tndSwizzleS1S2PrefixSum);
         tndSwizzleParam_->set_tndSwizzleS1S2AlignPrefixSum(tndBaseInfo.tndSwizzleS1S2AlignPrefixSum);
-    } else if (!IsNewDeter(fBaseParams) && fBaseParams.layoutType == INPUT_FORMAT_TND && tndParam_ != nullptr) {
+    } else if (!fBaseParams.isSmallSD && !IsNewDeter(fBaseParams) && fBaseParams.layoutType == INPUT_FORMAT_TND &&
+               tndParam_ != nullptr) {
         tndParam_->set_tndStartBIdx(tndBaseInfo.tndStartBIdx);
         tndParam_->set_tndS1S2PrefixSum(tndBaseInfo.tndS1S2PrefixSum);
         tndParam_->set_tndS1S2AlignPrefixSum(tndBaseInfo.tndS1S2AlignPrefixSum);

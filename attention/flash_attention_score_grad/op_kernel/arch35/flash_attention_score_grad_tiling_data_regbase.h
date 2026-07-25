@@ -42,6 +42,16 @@ public:
     uint64_t workspaceSize;
     float scaleValue;
     uint32_t reserved;
+    uint32_t bSize;
+    uint32_t n1Size;
+    uint32_t gSize;
+    uint32_t actualDv;
+    uint32_t inputDtype;
+    uint32_t outputDtype;
+    uint32_t calcTypeSize;
+    uint32_t sparseMode;
+    uint32_t isSingleTask;
+    uint32_t reserved1;
 };
 
 class SmallSDStrideParamRegbase {
