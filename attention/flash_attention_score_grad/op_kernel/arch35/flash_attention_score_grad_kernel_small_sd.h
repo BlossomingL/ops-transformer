@@ -83,10 +83,21 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     smallSDConstInfo.n1Size = smallSDTilingData->baseParam.n1Size;
     smallSDConstInfo.n2Size = smallSDTilingData->baseParam.n2Size;
     smallSDConstInfo.gSize = smallSDTilingData->baseParam.gSize;
+    smallSDConstInfo.s1 = smallSDTilingData->baseParam.s1;
+    smallSDConstInfo.s2 = smallSDTilingData->baseParam.s2;
     smallSDConstInfo.d = smallSDTilingData->baseParam.actualD;
     smallSDConstInfo.dv = smallSDTilingData->baseParam.actualDv;
+    smallSDConstInfo.s2Align16 = smallSDTilingData->baseParam.s2Align16;
     smallSDConstInfo.dAlign16 = AlignTo16(smallSDConstInfo.d);
     smallSDConstInfo.dvAlign16 = AlignTo16(smallSDConstInfo.dv);
+    smallSDConstInfo.qGroupStride = smallSDTilingData->strideParam.qGroup;
+    smallSDConstInfo.kvGroupStride = smallSDTilingData->strideParam.kvGroup;
+    smallSDConstInfo.dyGroupStride = smallSDTilingData->strideParam.dyGroup;
+    smallSDConstInfo.attentionGroupStride = smallSDTilingData->strideParam.attentionGroup;
+    smallSDConstInfo.dqGroupStride = smallSDTilingData->strideParam.dqGroup;
+    smallSDConstInfo.dkvGroupStride = smallSDTilingData->strideParam.dkvGroup;
+    smallSDConstInfo.qSStride = smallSDTilingData->strideParam.qS;
+    smallSDConstInfo.kvSStride = smallSDTilingData->strideParam.kvS;
     smallSDConstInfo.layoutType = smallSDTilingData->baseParam.layoutType;
     smallSDConstInfo.tndMaxSumLayout = smallSDTilingData->baseParam.tndMaxSumLayout;
     smallSDConstInfo.isSingleTask = smallSDTilingData->baseParam.isSingleTask;
@@ -121,12 +132,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
         const int64_t blockStart = smallSDConstInfo.blockStart;
         smallSDCursor.batchIdx = blockStart / smallSDConstInfo.n2Size;
         smallSDCursor.n2Idx = blockStart - smallSDCursor.batchIdx * smallSDConstInfo.n2Size;
-        smallSDCursor.qPrefix = smallSDCursor.batchIdx * smallSDTilingData->baseParam.s1;
-        smallSDCursor.kvPrefix = smallSDCursor.batchIdx * smallSDTilingData->baseParam.s2;
-        smallSDCursor.s1s2Prefix =
-            smallSDCursor.batchIdx * smallSDTilingData->baseParam.s1 * smallSDTilingData->baseParam.s2;
-        smallSDCursor.s1s2AlignPrefix =
-            smallSDCursor.batchIdx * smallSDTilingData->baseParam.s1 * smallSDTilingData->baseParam.s2Align16;
+        smallSDCursor.qPrefix = smallSDCursor.batchIdx * smallSDConstInfo.s1;
+        smallSDCursor.kvPrefix = smallSDCursor.batchIdx * smallSDConstInfo.s2;
+        smallSDCursor.s1s2Prefix = smallSDCursor.batchIdx * smallSDConstInfo.s1 * smallSDConstInfo.s2;
+        smallSDCursor.s1s2AlignPrefix = smallSDCursor.batchIdx * smallSDConstInfo.s1 * smallSDConstInfo.s2Align16;
         smallSDCursor.offsets.q = smallSDTilingData->coreTaskParam[this->cBlockIdx].qOffset;
         smallSDCursor.offsets.k = smallSDTilingData->coreTaskParam[this->cBlockIdx].kOffset;
         smallSDCursor.offsets.v = smallSDTilingData->coreTaskParam[this->cBlockIdx].vOffset;
@@ -172,9 +181,9 @@ FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::PrepareSmallS
         runInfo.offsets.softmaxMax = 0;
         runInfo.offsets.softmaxSum = 0;
     } else {
-        runInfo.shape.s1 = smallSDTilingData->baseParam.s1;
-        runInfo.shape.s2 = smallSDTilingData->baseParam.s2;
-        runInfo.shape.s2Align16 = smallSDTilingData->baseParam.s2Align16;
+        runInfo.shape.s1 = smallSDConstInfo.s1;
+        runInfo.shape.s2 = smallSDConstInfo.s2;
+        runInfo.shape.s2Align16 = smallSDConstInfo.s2Align16;
         runInfo.offsets = smallSDCursor.offsets;
     }
     runInfo.shape.halfS1 = (runInfo.shape.s1 + 1) >> 1;
@@ -192,24 +201,15 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 {
     if (smallSDCursor.n2Idx + 1 < smallSDConstInfo.n2Size) {
         smallSDCursor.n2Idx++;
-        if constexpr (IS_TND) {
-            const int64_t dOffset = smallSDConstInfo.d;
-            smallSDCursor.offsets.q += dOffset;
-            smallSDCursor.offsets.k += dOffset;
-            smallSDCursor.offsets.v += dOffset;
-            smallSDCursor.offsets.dy += dOffset;
-            smallSDCursor.offsets.dq += dOffset;
-            smallSDCursor.offsets.dk += dOffset;
-            smallSDCursor.offsets.dv += dOffset;
-        } else {
-            smallSDCursor.offsets.q += smallSDTilingData->strideParam.qGroup;
-            smallSDCursor.offsets.k += smallSDTilingData->strideParam.kvGroup;
-            smallSDCursor.offsets.v += smallSDTilingData->strideParam.kvGroup;
-            smallSDCursor.offsets.dy += smallSDTilingData->strideParam.dyGroup;
-            smallSDCursor.offsets.attention += smallSDTilingData->strideParam.attentionGroup;
-            smallSDCursor.offsets.dq += smallSDTilingData->strideParam.dqGroup;
-            smallSDCursor.offsets.dk += smallSDTilingData->strideParam.dkvGroup;
-            smallSDCursor.offsets.dv += smallSDTilingData->strideParam.dkvGroup;
+        if constexpr (!IS_TND) {
+            smallSDCursor.offsets.q += smallSDConstInfo.qGroupStride;
+            smallSDCursor.offsets.k += smallSDConstInfo.kvGroupStride;
+            smallSDCursor.offsets.v += smallSDConstInfo.kvGroupStride;
+            smallSDCursor.offsets.dy += smallSDConstInfo.dyGroupStride;
+            smallSDCursor.offsets.attention += smallSDConstInfo.attentionGroupStride;
+            smallSDCursor.offsets.dq += smallSDConstInfo.dqGroupStride;
+            smallSDCursor.offsets.dk += smallSDConstInfo.dkvGroupStride;
+            smallSDCursor.offsets.dv += smallSDConstInfo.dkvGroupStride;
         }
         return;
     }
@@ -225,19 +225,18 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
         smallSDCursor.s1s2AlignPrefix += s1 * AlignTo16(s2);
         LoadSmallSDTndBatch();
     } else {
-        smallSDCursor.qPrefix += smallSDTilingData->baseParam.s1;
-        smallSDCursor.kvPrefix += smallSDTilingData->baseParam.s2;
-        smallSDCursor.s1s2Prefix += smallSDTilingData->baseParam.s1 * smallSDTilingData->baseParam.s2;
-        smallSDCursor.s1s2AlignPrefix +=
-            smallSDTilingData->baseParam.s1 * smallSDTilingData->baseParam.s2Align16;
-        smallSDCursor.offsets.q += smallSDTilingData->strideParam.qS;
-        smallSDCursor.offsets.k += smallSDTilingData->strideParam.kvS;
-        smallSDCursor.offsets.v += smallSDTilingData->strideParam.kvS;
-        smallSDCursor.offsets.dy += smallSDTilingData->strideParam.qS;
-        smallSDCursor.offsets.attention += smallSDTilingData->strideParam.qS;
-        smallSDCursor.offsets.dq += smallSDTilingData->strideParam.qS;
-        smallSDCursor.offsets.dk += smallSDTilingData->strideParam.kvS;
-        smallSDCursor.offsets.dv += smallSDTilingData->strideParam.kvS;
+        smallSDCursor.qPrefix += smallSDConstInfo.s1;
+        smallSDCursor.kvPrefix += smallSDConstInfo.s2;
+        smallSDCursor.s1s2Prefix += smallSDConstInfo.s1 * smallSDConstInfo.s2;
+        smallSDCursor.s1s2AlignPrefix += smallSDConstInfo.s1 * smallSDConstInfo.s2Align16;
+        smallSDCursor.offsets.q += smallSDConstInfo.qSStride;
+        smallSDCursor.offsets.k += smallSDConstInfo.kvSStride;
+        smallSDCursor.offsets.v += smallSDConstInfo.kvSStride;
+        smallSDCursor.offsets.dy += smallSDConstInfo.qSStride;
+        smallSDCursor.offsets.attention += smallSDConstInfo.qSStride;
+        smallSDCursor.offsets.dq += smallSDConstInfo.qSStride;
+        smallSDCursor.offsets.dk += smallSDConstInfo.kvSStride;
+        smallSDCursor.offsets.dv += smallSDConstInfo.kvSStride;
     }
 }
 
