@@ -220,7 +220,7 @@ using namespace AscendC::MicroAPI;
         FagBaseApi::FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType> op;                              \
         op.Init(key, value, dy, query, pse_shift, drop_mask, atten_mask, attention_in, softmax_max, softmax_sum,       \
                 prefix, actual_seq_qlen, actual_seq_kvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope,     \
-                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, tilingData, &pipeBase);                  \
+                keyRope, sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, user, smallSDTilingData, &pipeBase);           \
         op.Process();                                                                                                  \
         pipeBase.Destroy();                                                                                            \
     } while (0)
@@ -254,6 +254,9 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
     const __gm__ fagTiling *__restrict tilingData = (const __gm__ fagTiling *__restrict)(tiling_data + offset);
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     if constexpr (isSmallSD) {
+        using smallSDTiling = FlashAttentionScoreGradSmallSDTilingData<isTnd>;
+        const __gm__ smallSDTiling *__restrict smallSDTilingData =
+            (const __gm__ smallSDTiling *__restrict)(tiling_data);
         INVOKE_FAG_SMALL_SD_BN2_REGBASE_IMPL(half, float, half, isTnd, S1TemplateType(s1TemplateType),
                                              S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
         return;
@@ -281,6 +284,9 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
 
 #if (ORIG_DTYPE_QUERY == DT_BF16)
     if constexpr (isSmallSD) {
+        using smallSDTiling = FlashAttentionScoreGradSmallSDTilingData<isTnd>;
+        const __gm__ smallSDTiling *__restrict smallSDTilingData =
+            (const __gm__ smallSDTiling *__restrict)(tiling_data);
         INVOKE_FAG_SMALL_SD_BN2_REGBASE_IMPL(bfloat16_t, float, bfloat16_t, isTnd, S1TemplateType(s1TemplateType),
                                              S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
         return;

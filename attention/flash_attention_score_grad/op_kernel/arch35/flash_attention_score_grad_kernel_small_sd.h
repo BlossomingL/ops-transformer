@@ -26,8 +26,37 @@ public:
     ARGS_TRAITS;
     using BaseKernel = FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>;
     using KernelBaseClass = typename BaseKernel::BaseClass;
+    using SmallSDTilingData = FlashAttentionScoreGradSmallSDTilingData<IS_TND>;
+    using SmallSDFagTilingData = typename SmallSDTilingData::FagTilingData;
+    using SmallSDTilingType = const __gm__ SmallSDTilingData *__restrict;
+    using SmallSDFagTilingType = const __gm__ SmallSDFagTilingData *__restrict;
+    __aicore__ inline void Init(GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR query, GM_ADDR pseShift,
+                                GM_ADDR dropMask, GM_ADDR attenMask, GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+                                GM_ADDR prefixN, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen, GM_ADDR deqScaleQ,
+                                GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope,
+                                GM_ADDR keyRope, GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse,
+                                GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR dsink, GM_ADDR workspace,
+                                SmallSDTilingType ordTilingData, TPipe *pipeIn);
     __aicore__ inline void Process();
+
+private:
+    SmallSDTilingType smallSDTilingData;
 };
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::Init(
+    GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR query, GM_ADDR pseShift, GM_ADDR dropMask, GM_ADDR attenMask,
+    GM_ADDR y, GM_ADDR softmaxMax, GM_ADDR softmaxSum, GM_ADDR prefixN, GM_ADDR actualSeqQlen, GM_ADDR actualSeqKvlen,
+    GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy, GM_ADDR queryRope, GM_ADDR keyRope,
+    GM_ADDR sink, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR dqRope, GM_ADDR dkRope, GM_ADDR dsink,
+    GM_ADDR workspace, SmallSDTilingType ordTilingData, TPipe *pipeIn)
+{
+    smallSDTilingData = ordTilingData;
+    SmallSDFagTilingType fagTilingData = &ordTilingData->fagTilingData;
+    BaseKernel::Init(key, value, dy, query, pseShift, dropMask, attenMask, y, softmaxMax, softmaxSum, prefixN,
+                     actualSeqQlen, actualSeqKvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope, keyRope,
+                     sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, fagTilingData, pipeIn);
+}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::Process()
