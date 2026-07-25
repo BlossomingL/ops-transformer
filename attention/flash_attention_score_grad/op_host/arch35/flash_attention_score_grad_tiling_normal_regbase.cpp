@@ -1323,8 +1323,8 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsSmallSDEligible() const
                             !fBaseParams.hasRope;
     const bool shapeOk = fBaseParams.s1 > 0 && fBaseParams.s1 < static_cast<int64_t>(ConstAxisTemplateNum::NUM128) &&
                          fBaseParams.s2 > 0 && fBaseParams.s2 < static_cast<int64_t>(ConstAxisTemplateNum::NUM128) &&
-                         (fBaseParams.d == static_cast<int64_t>(ConstAxisTemplateNum::NUM64) ||
-                          fBaseParams.d == static_cast<int64_t>(ConstAxisTemplateNum::NUM128)) &&
+                         fBaseParams.d > 0 &&
+                         fBaseParams.d <= static_cast<int64_t>(ConstAxisTemplateNum::NUM128) &&
                          fBaseParams.d == fBaseParams.d1;
     const bool routeOk = fBaseParams.splitAxis == SplitAxisEnum::BN2 && fBaseParams.n1 == fBaseParams.n2 &&
                          fBaseParams.g == 1;
@@ -1567,6 +1567,11 @@ bool FlashAttentionScoreGradTilingNormalRegbase::ValidateSmallSDInvariant() cons
 {
     if (!fBaseParams.isSmallSD || smallSDBaseParam_.usedCoreNum == 0 ||
         smallSDBaseParam_.usedCoreNum > fBaseParams.aicNum || smallSDBaseParam_.validTaskCount == 0) {
+        return false;
+    }
+    if (smallSDBaseParam_.actualD == 0 ||
+        smallSDBaseParam_.actualD > static_cast<uint16_t>(ConstAxisTemplateNum::NUM128) ||
+        fBaseParams.d != fBaseParams.d1) {
         return false;
     }
     uint32_t expectedStart = 0;
