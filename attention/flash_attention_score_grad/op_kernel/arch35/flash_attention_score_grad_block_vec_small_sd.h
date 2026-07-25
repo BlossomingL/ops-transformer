@@ -30,6 +30,22 @@ public:
                                              FagRunInfo &compatRunInfo);
     __aicore__ inline void CopyMaxSumSmallSD(const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo,
                                             FagRunInfo &compatRunInfo, int64_t taskId);
+    __aicore__ inline void ProcessVec2SmallSD(LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                             const SmallSDConstInfo &smallSDConstInfo,
+                                             FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
+    __aicore__ inline void ProcessVec3SmallSD(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                             LocalTensor<CALC_TYPE> &mm1ResTensor,
+                                             LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                             const SmallSDConstInfo &smallSDConstInfo,
+                                             FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
+    __aicore__ inline void ProcessVec4SmallSD(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                             LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                             const SmallSDConstInfo &smallSDConstInfo,
+                                             FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
+    template <typename T, bool IS_WRITE_UB, uint8_t MM_IDX>
+    __aicore__ inline void ProcessMulsAndCastSmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType inputTensor,
+                                                    const SmallSDConstInfo &smallSDConstInfo,
+                                                    FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
 };
 
 TEMPLATES_DEF
@@ -49,6 +65,44 @@ __aicore__ inline void FAGBlockVecSmallSD<TEMPLATE_ARGS>::CopyMaxSumSmallSD(
 }
 
 TEMPLATES_DEF
+__aicore__ inline void FAGBlockVecSmallSD<TEMPLATE_ARGS>::ProcessVec2SmallSD(
+    LocalTensor<CALC_TYPE> &mm2ResTensor, const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo,
+    FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::ProcessVec2(mm2ResTensor, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
+__aicore__ inline void FAGBlockVecSmallSD<TEMPLATE_ARGS>::ProcessVec3SmallSD(
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm1ResTensor,
+    LocalTensor<CALC_TYPE> &mm2ResTensor, const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo,
+    FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::ProcessVec3(dstBuffer, mm1ResTensor, mm2ResTensor, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
+__aicore__ inline void FAGBlockVecSmallSD<TEMPLATE_ARGS>::ProcessVec4SmallSD(
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm2ResTensor,
+    const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::ProcessVec4(dstBuffer, mm2ResTensor, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
+template <typename T, bool IS_WRITE_UB, uint8_t MM_IDX>
+__aicore__ inline void FAGBlockVecSmallSD<TEMPLATE_ARGS>::ProcessMulsAndCastSmallSD(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType inputTensor, const SmallSDConstInfo &smallSDConstInfo,
+    FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::template ProcessMulsAndCast<T, IS_WRITE_UB, MM_IDX>(inputTensor, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
 class FAGBlockVecSmallSDDummy : public FAGBlockVecDummy<TEMPLATE_ARGS> {
 public:
     using BaseClass = FAGBlockVecDummy<TEMPLATE_ARGS>;
@@ -57,6 +111,22 @@ public:
                                              FagRunInfo &compatRunInfo){};
     __aicore__ inline void CopyMaxSumSmallSD(const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo,
                                             FagRunInfo &compatRunInfo, int64_t taskId){};
+    __aicore__ inline void ProcessVec2SmallSD(LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                             const SmallSDConstInfo &smallSDConstInfo,
+                                             FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
+    __aicore__ inline void ProcessVec3SmallSD(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                             LocalTensor<CALC_TYPE> &mm1ResTensor,
+                                             LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                             const SmallSDConstInfo &smallSDConstInfo,
+                                             FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
+    __aicore__ inline void ProcessVec4SmallSD(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                             LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                             const SmallSDConstInfo &smallSDConstInfo,
+                                             FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
+    template <typename T, bool IS_WRITE_UB, uint8_t MM_IDX>
+    __aicore__ inline void ProcessMulsAndCastSmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType inputTensor,
+                                                    const SmallSDConstInfo &smallSDConstInfo,
+                                                    FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
 };
 
 } // namespace FagBaseApi

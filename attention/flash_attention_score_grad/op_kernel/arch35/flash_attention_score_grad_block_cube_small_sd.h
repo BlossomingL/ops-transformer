@@ -32,6 +32,21 @@ public:
     __aicore__ inline void IterateMmDyVSmallSD(LocalTensor<CALC_TYPE> &mm1ResTensor,
                                               const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo,
                                               FagRunInfo &compatRunInfo, PreloadArgs<IS_ROPE> &preloadArgs);
+    template <typename T, bool IS_WRITE_UB>
+    __aicore__ inline void IterateMmDsKSmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+                                              MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buffer,
+                                              const SmallSDConstInfo &smallSDConstInfo,
+                                              FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
+    template <typename T, bool IS_WRITE_UB>
+    __aicore__ inline void IterateMmDsQSmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+                                              MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buffer,
+                                              const SmallSDConstInfo &smallSDConstInfo,
+                                              FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
+    template <typename T, bool IS_WRITE_UB>
+    __aicore__ inline void IterateMmPDySmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+                                              MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buffer,
+                                              const SmallSDConstInfo &smallSDConstInfo,
+                                              FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo);
 };
 
 TEMPLATES_DEF
@@ -53,6 +68,39 @@ __aicore__ inline void FAGBlockCubeSmallSD<TEMPLATE_ARGS>::IterateMmDyVSmallSD(
 }
 
 TEMPLATES_DEF
+template <typename T, bool IS_WRITE_UB>
+__aicore__ inline void FAGBlockCubeSmallSD<TEMPLATE_ARGS>::IterateMmDsKSmallSD(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buffer, const SmallSDConstInfo &smallSDConstInfo,
+    FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::template IterateMmDsK<T, IS_WRITE_UB>(outTensor, dSL1Buffer, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
+template <typename T, bool IS_WRITE_UB>
+__aicore__ inline void FAGBlockCubeSmallSD<TEMPLATE_ARGS>::IterateMmDsQSmallSD(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buffer, const SmallSDConstInfo &smallSDConstInfo,
+    FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::template IterateMmDsQ<T, IS_WRITE_UB>(outTensor, dSL1Buffer, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
+template <typename T, bool IS_WRITE_UB>
+__aicore__ inline void FAGBlockCubeSmallSD<TEMPLATE_ARGS>::IterateMmPDySmallSD(
+    typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buffer, const SmallSDConstInfo &smallSDConstInfo,
+    FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo)
+{
+    (void)smallSDConstInfo;
+    BaseClass::template IterateMmPDy<T, IS_WRITE_UB>(outTensor, pL1Buffer, compatConstInfo, compatRunInfo);
+}
+
+TEMPLATES_DEF
 class FAGBlockCubeSmallSDDummy : public FAGBlockCubeDummy<TEMPLATE_ARGS> {
 public:
     using BaseClass = FAGBlockCubeDummy<TEMPLATE_ARGS>;
@@ -63,6 +111,21 @@ public:
     __aicore__ inline void IterateMmDyVSmallSD(LocalTensor<CALC_TYPE> &mm1ResTensor,
                                               const SmallSDConstInfo &smallSDConstInfo, FagConstInfo &compatConstInfo,
                                               FagRunInfo &compatRunInfo, PreloadArgs<IS_ROPE> &preloadArgs){};
+    template <typename T, bool IS_WRITE_UB>
+    __aicore__ inline void IterateMmDsKSmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+                                              MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buffer,
+                                              const SmallSDConstInfo &smallSDConstInfo,
+                                              FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
+    template <typename T, bool IS_WRITE_UB>
+    __aicore__ inline void IterateMmDsQSmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+                                              MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dSL1Buffer,
+                                              const SmallSDConstInfo &smallSDConstInfo,
+                                              FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
+    template <typename T, bool IS_WRITE_UB>
+    __aicore__ inline void IterateMmPDySmallSD(typename DqkvResPos<T, IS_WRITE_UB>::PosType outTensor,
+                                              MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &pL1Buffer,
+                                              const SmallSDConstInfo &smallSDConstInfo,
+                                              FagConstInfo &compatConstInfo, FagRunInfo &compatRunInfo){};
 };
 
 DEFINE_CUBE_BLOCK_TRAITS(FAGBlockCubeSmallSD);

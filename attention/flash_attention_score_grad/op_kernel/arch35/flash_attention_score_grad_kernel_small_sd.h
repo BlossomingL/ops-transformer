@@ -44,16 +44,15 @@ private:
     __aicore__ inline void InitSmallSDConstInfo();
     __aicore__ inline void InitSmallSDCursor();
     __aicore__ inline void LoadSmallSDTndBatch();
-    __aicore__ inline void PrepareSmallSDSlot(SmallSDPipelineSlot &slot, int64_t taskId);
+    __aicore__ inline void PrepareSmallSDRunInfo(SmallSDRunInfo &runInfo, int64_t taskId);
     __aicore__ inline void AdvanceSmallSDCursor();
-    __aicore__ inline void BuildCompatRunInfo(FagRunInfo &runInfo, const SmallSDPipelineSlot &slot);
-    __aicore__ inline void SetSmallSDPreloadArgs(FagRunInfo &runInfo, const SmallSDPipelineSlot &nextSlot,
+    __aicore__ inline void BuildCompatRunInfo(FagRunInfo &compatRunInfo, const SmallSDRunInfo &runInfo);
+    __aicore__ inline void SetSmallSDPreloadArgs(FagRunInfo &compatRunInfo, const SmallSDRunInfo &nextRunInfo,
                                                  bool hasNext);
-    __aicore__ inline void ProcessVec1SmallSD(FagRunInfo &runInfo);
-    __aicore__ inline void IterateMmQKSmallSD(LocalTensor<CALC_TYPE> &mm2ResTensor, FagRunInfo &runInfo);
-    __aicore__ inline void IterateMmDyVSmallSD(LocalTensor<CALC_TYPE> &mm1ResTensor, FagRunInfo &runInfo);
-    __aicore__ inline void CopyMaxSumSmallSD(FagRunInfo &runInfo, int64_t taskId);
-    __aicore__ inline void ComputeDqkvSmallSD(FagRunInfo &runInfo, bool &needSyncDkMM, int64_t taskId);
+    __aicore__ inline void ProcessVec1SmallSD(const SmallSDRunInfo &runInfo);
+    __aicore__ inline void IssueMm1Mm2SmallSD(const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo,
+                                             bool hasNext, bool &needSyncDkMM);
+    __aicore__ inline void ComputeDqkvSmallSD(const SmallSDRunInfo &runInfo, bool &needSyncDkMM, int64_t taskId);
     SmallSDTilingType smallSDTilingData;
     SmallSDConstInfo smallSDConstInfo;
     SmallSDTaskCursor smallSDCursor;
@@ -141,48 +140,48 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::PrepareSmallSDSlot(SmallSDPipelineSlot &slot,
-                                                                                      int64_t taskId)
+FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::PrepareSmallSDRunInfo(SmallSDRunInfo &runInfo,
+                                                                                         int64_t taskId)
 {
-    slot = {};
-    slot.taskId = taskId;
-    slot.batchIdx = smallSDCursor.batchIdx;
-    slot.n2Idx = smallSDCursor.n2Idx;
-    slot.qPrefix = smallSDCursor.qPrefix;
-    slot.kvPrefix = smallSDCursor.kvPrefix;
-    slot.s1s2Prefix = smallSDCursor.s1s2Prefix;
-    slot.s1s2AlignPrefix = smallSDCursor.s1s2AlignPrefix;
-    slot.shape.d = smallSDConstInfo.d;
-    slot.shape.dv = smallSDConstInfo.dv;
-    slot.shape.scale = smallSDConstInfo.scaleValue;
+    runInfo = {};
+    runInfo.taskId = taskId;
+    runInfo.batchIdx = smallSDCursor.batchIdx;
+    runInfo.n2Idx = smallSDCursor.n2Idx;
+    runInfo.qPrefix = smallSDCursor.qPrefix;
+    runInfo.kvPrefix = smallSDCursor.kvPrefix;
+    runInfo.s1s2Prefix = smallSDCursor.s1s2Prefix;
+    runInfo.s1s2AlignPrefix = smallSDCursor.s1s2AlignPrefix;
+    runInfo.shape.d = smallSDConstInfo.d;
+    runInfo.shape.dv = smallSDConstInfo.dv;
+    runInfo.shape.scale = smallSDConstInfo.scaleValue;
     if constexpr (IS_TND) {
-        slot.shape.s1 = smallSDCursor.qEnd - smallSDCursor.qPrefix;
-        slot.shape.s2 = smallSDCursor.kvEnd - smallSDCursor.kvPrefix;
-        slot.shape.s2Align16 = AlignTo16(slot.shape.s2);
+        runInfo.shape.s1 = smallSDCursor.qEnd - smallSDCursor.qPrefix;
+        runInfo.shape.s2 = smallSDCursor.kvEnd - smallSDCursor.kvPrefix;
+        runInfo.shape.s2Align16 = AlignTo16(runInfo.shape.s2);
         const int64_t n2Offset = smallSDCursor.n2Idx * smallSDConstInfo.d;
-        slot.offsets.q = smallSDCursor.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d + n2Offset;
-        slot.offsets.k = smallSDCursor.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d + n2Offset;
-        slot.offsets.v = slot.offsets.k;
-        slot.offsets.dy = slot.offsets.q;
-        slot.offsets.attention = slot.offsets.q;
-        slot.offsets.dq = slot.offsets.q;
-        slot.offsets.dk = slot.offsets.k;
-        slot.offsets.dv = slot.offsets.k;
-        slot.offsets.softmaxMax = 0;
-        slot.offsets.softmaxSum = 0;
+        runInfo.offsets.q = smallSDCursor.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d + n2Offset;
+        runInfo.offsets.k = smallSDCursor.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d + n2Offset;
+        runInfo.offsets.v = runInfo.offsets.k;
+        runInfo.offsets.dy = runInfo.offsets.q;
+        runInfo.offsets.attention = runInfo.offsets.q;
+        runInfo.offsets.dq = runInfo.offsets.q;
+        runInfo.offsets.dk = runInfo.offsets.k;
+        runInfo.offsets.dv = runInfo.offsets.k;
+        runInfo.offsets.softmaxMax = 0;
+        runInfo.offsets.softmaxSum = 0;
     } else {
-        slot.shape.s1 = smallSDTilingData->baseParam.s1;
-        slot.shape.s2 = smallSDTilingData->baseParam.s2;
-        slot.shape.s2Align16 = smallSDTilingData->baseParam.s2Align16;
-        slot.offsets = smallSDCursor.offsets;
+        runInfo.shape.s1 = smallSDTilingData->baseParam.s1;
+        runInfo.shape.s2 = smallSDTilingData->baseParam.s2;
+        runInfo.shape.s2Align16 = smallSDTilingData->baseParam.s2Align16;
+        runInfo.offsets = smallSDCursor.offsets;
     }
-    slot.shape.halfS1 = (slot.shape.s1 + 1) >> 1;
-    slot.shape.firstHalfS1 = slot.shape.halfS1;
-    slot.shape.halfS2 = (slot.shape.s2 + 1) >> 1;
-    slot.shape.firstHalfS2 = slot.shape.halfS2;
+    runInfo.shape.halfS1 = (runInfo.shape.s1 + 1) >> 1;
+    runInfo.shape.firstHalfS1 = runInfo.shape.halfS1;
+    runInfo.shape.halfS2 = (runInfo.shape.s2 + 1) >> 1;
+    runInfo.shape.firstHalfS2 = runInfo.shape.halfS2;
     if (this->vSubBlockIdx == 1) {
-        slot.shape.halfS1 = slot.shape.s1 - slot.shape.halfS1;
-        slot.shape.halfS2 = slot.shape.s2 - slot.shape.halfS2;
+        runInfo.shape.halfS1 = runInfo.shape.s1 - runInfo.shape.halfS1;
+        runInfo.shape.halfS2 = runInfo.shape.s2 - runInfo.shape.halfS2;
     }
 }
 
@@ -242,101 +241,228 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::BuildCompatRunInfo(FagRunInfo &runInfo,
-                                                                                      const SmallSDPipelineSlot &slot)
+FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::BuildCompatRunInfo(FagRunInfo &compatRunInfo,
+                                                                                      const SmallSDRunInfo &runInfo)
 {
-    runInfo = {};
-    runInfo.commonRunInfo.boIdx = slot.batchIdx;
-    runInfo.commonRunInfo.n2oIdx = slot.n2Idx;
-    runInfo.commonRunInfo.goIdx = 0;
-    runInfo.commonRunInfo.s1oIdx = 0;
-    runInfo.commonRunInfo.taskId = slot.taskId;
-    runInfo.commonRunInfo.taskIdMod2 = slot.taskId & 1;
-    runInfo.commonRunInfo.s1RealSize = slot.shape.s1;
-    runInfo.commonRunInfo.s2RealSize = slot.shape.s2;
-    runInfo.commonRunInfo.actualS1Size = slot.shape.s1;
-    runInfo.commonRunInfo.actualS2Size = slot.shape.s2;
-    runInfo.commonRunInfo.halfS1RealSize = slot.shape.halfS1;
-    runInfo.commonRunInfo.firstHalfS1RealSize = slot.shape.firstHalfS1;
-    runInfo.commonRunInfo.s2SizeAcc = slot.kvPrefix;
-    runInfo.commonRunInfo.b1SSOffsetAlign = slot.s1s2AlignPrefix;
-    runInfo.commonRunInfo.b1SSOffset = slot.s1s2Prefix;
-    runInfo.commonRunInfo.b1SSAttenMaskOffset = slot.s1s2Prefix;
-    runInfo.commonRunInfo.s2StartIdx = 0;
-    runInfo.commonRunInfo.s2AlignedSize = slot.shape.s2Align16;
-    runInfo.commonRunInfo.vecCoreOffset = this->vSubBlockIdx * slot.shape.firstHalfS1;
-    runInfo.commonRunInfo.queryOffset = slot.offsets.q;
-    runInfo.commonRunInfo.keyOffset = slot.offsets.k;
-    runInfo.commonRunInfo.valueOffset = slot.offsets.v;
-    runInfo.s2oIdx = 0;
-    runInfo.s2CvBegin = 0;
-    runInfo.s2CvEnd = slot.shape.s2;
-    runInfo.halfS2RealSize = slot.shape.halfS2;
-    runInfo.firstHalfS2RealSize = slot.shape.firstHalfS2;
-    runInfo.dyOffset = slot.offsets.dy;
-    runInfo.queryOffsetWithRope = slot.offsets.q;
-    runInfo.keyOffsetWithRope = slot.offsets.k;
-    runInfo.queryOffsetWithRopeForMm12 = slot.offsets.q;
-    runInfo.keyOffsetWithRopeForMm12 = slot.offsets.k;
-    runInfo.maxsumOffset = slot.offsets.softmaxMax;
-    runInfo.lastBatchIdx = slot.batchIdx;
-    runInfo.lastBatchTotalS1BOffset = slot.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d;
-    runInfo.lastBatchTotalS2BOffset = slot.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d;
-    runInfo.lastBatchTotalS1BOffsetForDv = slot.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.dv;
-    runInfo.lastBatchTotalS2BOffsetForDv = slot.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.dv;
-    runInfo.lastBatchTotalS1S2SizeAlign = slot.s1s2AlignPrefix;
-    runInfo.lastBatchTotalS1S2Size = slot.s1s2Prefix;
-    runInfo.lastBatchTotalS2Size = slot.kvPrefix;
+    compatRunInfo = {};
+    compatRunInfo.commonRunInfo.boIdx = runInfo.batchIdx;
+    compatRunInfo.commonRunInfo.n2oIdx = runInfo.n2Idx;
+    compatRunInfo.commonRunInfo.goIdx = 0;
+    compatRunInfo.commonRunInfo.s1oIdx = 0;
+    compatRunInfo.commonRunInfo.taskId = runInfo.taskId;
+    compatRunInfo.commonRunInfo.taskIdMod2 = runInfo.taskId & 1;
+    compatRunInfo.commonRunInfo.s1RealSize = runInfo.shape.s1;
+    compatRunInfo.commonRunInfo.s2RealSize = runInfo.shape.s2;
+    compatRunInfo.commonRunInfo.actualS1Size = runInfo.shape.s1;
+    compatRunInfo.commonRunInfo.actualS2Size = runInfo.shape.s2;
+    compatRunInfo.commonRunInfo.halfS1RealSize = runInfo.shape.halfS1;
+    compatRunInfo.commonRunInfo.firstHalfS1RealSize = runInfo.shape.firstHalfS1;
+    compatRunInfo.commonRunInfo.s2SizeAcc = runInfo.kvPrefix;
+    compatRunInfo.commonRunInfo.b1SSOffsetAlign = runInfo.s1s2AlignPrefix;
+    compatRunInfo.commonRunInfo.b1SSOffset = runInfo.s1s2Prefix;
+    compatRunInfo.commonRunInfo.b1SSAttenMaskOffset = runInfo.s1s2Prefix;
+    compatRunInfo.commonRunInfo.s2StartIdx = 0;
+    compatRunInfo.commonRunInfo.s2AlignedSize = runInfo.shape.s2Align16;
+    compatRunInfo.commonRunInfo.vecCoreOffset = this->vSubBlockIdx * runInfo.shape.firstHalfS1;
+    compatRunInfo.commonRunInfo.queryOffset = runInfo.offsets.q;
+    compatRunInfo.commonRunInfo.keyOffset = runInfo.offsets.k;
+    compatRunInfo.commonRunInfo.valueOffset = runInfo.offsets.v;
+    compatRunInfo.s2oIdx = 0;
+    compatRunInfo.s2CvBegin = 0;
+    compatRunInfo.s2CvEnd = runInfo.shape.s2;
+    compatRunInfo.halfS2RealSize = runInfo.shape.halfS2;
+    compatRunInfo.firstHalfS2RealSize = runInfo.shape.firstHalfS2;
+    compatRunInfo.dyOffset = runInfo.offsets.dy;
+    compatRunInfo.queryOffsetWithRope = runInfo.offsets.q;
+    compatRunInfo.keyOffsetWithRope = runInfo.offsets.k;
+    compatRunInfo.queryOffsetWithRopeForMm12 = runInfo.offsets.q;
+    compatRunInfo.keyOffsetWithRopeForMm12 = runInfo.offsets.k;
+    compatRunInfo.maxsumOffset = runInfo.offsets.softmaxMax;
+    compatRunInfo.lastBatchIdx = runInfo.batchIdx;
+    compatRunInfo.lastBatchTotalS1BOffset = runInfo.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d;
+    compatRunInfo.lastBatchTotalS2BOffset = runInfo.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d;
+    compatRunInfo.lastBatchTotalS1BOffsetForDv = runInfo.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.dv;
+    compatRunInfo.lastBatchTotalS2BOffsetForDv = runInfo.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.dv;
+    compatRunInfo.lastBatchTotalS1S2SizeAlign = runInfo.s1s2AlignPrefix;
+    compatRunInfo.lastBatchTotalS1S2Size = runInfo.s1s2Prefix;
+    compatRunInfo.lastBatchTotalS2Size = runInfo.kvPrefix;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDPreloadArgs(
-    FagRunInfo &runInfo, const SmallSDPipelineSlot &nextSlot, bool hasNext)
+    FagRunInfo &compatRunInfo, const SmallSDRunInfo &nextRunInfo, bool hasNext)
 {
     this->preloadArgs.copyNext = hasNext;
-    this->preloadArgs.copyCurrent = runInfo.commonRunInfo.taskId == 0;
-    runInfo.isNextS2IdxNoChange = false;
+    this->preloadArgs.copyCurrent = compatRunInfo.commonRunInfo.taskId == 0;
+    compatRunInfo.isNextS2IdxNoChange = false;
     if (!hasNext) {
         return;
     }
-    this->preloadArgs.nextQueryOffset = nextSlot.offsets.q;
-    this->preloadArgs.nextDyOffset = nextSlot.offsets.dy;
-    this->preloadArgs.nextMOrN = nextSlot.shape.s1;
+    this->preloadArgs.nextQueryOffset = nextRunInfo.offsets.q;
+    this->preloadArgs.nextDyOffset = nextRunInfo.offsets.dy;
+    this->preloadArgs.nextMOrN = nextRunInfo.shape.s1;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::ProcessVec1SmallSD(
-    FagRunInfo &runInfo)
+    const SmallSDRunInfo &runInfo)
 {
-    this->vecBlock.ProcessVec1SmallSD(smallSDConstInfo, this->constInfo, runInfo);
+    FagRunInfo compatRunInfo;
+    BuildCompatRunInfo(compatRunInfo, runInfo);
+    this->vecBlock.ProcessVec1SmallSD(smallSDConstInfo, this->constInfo, compatRunInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::IterateMmQKSmallSD(
-    LocalTensor<CALC_TYPE> &mm2ResTensor, FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::IssueMm1Mm2SmallSD(
+    const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo, bool hasNext, bool &needSyncDkMM)
 {
-    this->cubeBlock.IterateMmQKSmallSD(mm2ResTensor, smallSDConstInfo, this->constInfo, runInfo, this->preloadArgs);
-}
+    FagRunInfo compatRunInfo;
+    BuildCompatRunInfo(compatRunInfo, runInfo);
+    SetSmallSDPreloadArgs(compatRunInfo, nextRunInfo, hasNext);
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::IterateMmDyVSmallSD(
-    LocalTensor<CALC_TYPE> &mm1ResTensor, FagRunInfo &runInfo)
-{
-    this->cubeBlock.IterateMmDyVSmallSD(mm1ResTensor, smallSDConstInfo, this->constInfo, runInfo, this->preloadArgs);
-}
+    if constexpr (KernelBaseClass::IS_DK_WRITE_UB) {
+        if ASCEND_IS_AIC {
+            if (needSyncDkMM) {
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+                CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_DETER_FIX_FLAG);
+            }
+        }
+    }
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::CopyMaxSumSmallSD(
-    FagRunInfo &runInfo, int64_t taskId)
-{
-    this->vecBlock.CopyMaxSumSmallSD(smallSDConstInfo, this->constInfo, runInfo, taskId);
+    LocalTensor<CALC_TYPE> mm2ResTensor =
+        this->mm2ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    this->cubeBlock.IterateMmQKSmallSD(mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo,
+                                       this->preloadArgs);
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_FLAG[runInfo.taskId & 1]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C2_TO_V2_FLAG[runInfo.taskId & 1]);
+    }
+
+    LocalTensor<CALC_TYPE> mm1ResTensor =
+        this->mm1ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    this->cubeBlock.IterateMmDyVSmallSD(mm1ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo,
+                                        this->preloadArgs);
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[runInfo.taskId & 1]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[runInfo.taskId & 1]);
+    }
+
+    this->vecBlock.CopyMaxSumSmallSD(smallSDConstInfo, this->constInfo, compatRunInfo, runInfo.taskId);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::ComputeDqkvSmallSD(
-    FagRunInfo &runInfo, bool &needSyncDkMM, int64_t taskId)
+    const SmallSDRunInfo &runInfo, bool &needSyncDkMM, int64_t taskId)
 {
-    this->ComputeDqkvBn2(runInfo, needSyncDkMM, taskId);
+    FagRunInfo compatRunInfo;
+    BuildCompatRunInfo(compatRunInfo, runInfo);
+
+    LocalTensor<CALC_TYPE> mm1ResTensor =
+        this->mm1ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> mm2ResTensor =
+        this->mm2ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    if ASCEND_IS_AIV {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C2_TO_V2_FLAG[(taskId + 1) & 1]);
+    }
+    this->vecBlock.ProcessVec2SmallSD(mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+    if ASCEND_IS_AIV {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
+    }
+    if ASCEND_IS_AIV {
+        if (needSyncDkMM) {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C4_TO_V3_FLAG);
+        }
+    }
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
+    MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
+    this->vecBlock.ProcessVec3SmallSD(dSL1Buffer, mm1ResTensor, mm2ResTensor, smallSDConstInfo, this->constInfo,
+                                      compatRunInfo);
+    if ASCEND_IS_AIV {
+        if (needSyncDkMM) {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C5_TO_V4_FLAG);
+        }
+    }
+    this->vecBlock.ProcessVec4SmallSD(pL1Buffer, mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+    if ASCEND_IS_AIV {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG);
+    }
+
+    if ASCEND_IS_AIC {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V3_TO_C3_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V3_TO_C3_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V4_TO_C5_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_V4_TO_C5_FLAG);
+    }
+
+    if constexpr (KernelBaseClass::IS_DQ_WRITE_UB) {
+        mm1ResTensor = this->mm1ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+        this->cubeBlock.template IterateMmDsKSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB>(
+            mm1ResTensor, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
+        } else {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C3_TO_V5_FLAG);
+        }
+        this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
+            mm1ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+    } else {
+        this->cubeBlock.template IterateMmDsKSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB>(
+            this->dqWorkSpaceGm, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
+        } else {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V5_FLAG);
+        }
+        this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
+            this->dqWorkSpaceGm, smallSDConstInfo, this->constInfo, compatRunInfo);
+    }
+
+    if constexpr (KernelBaseClass::IS_DK_WRITE_UB) {
+        mm2ResTensor = this->mm2ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+        this->cubeBlock.template IterateMmDsQSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB>(
+            mm2ResTensor, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
+        } else {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C4_TO_V6_FLAG);
+        }
+        this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB, DK_IDX>(
+            mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
+        }
+        if ASCEND_IS_AIV {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_V>(SYNC_DETER_FIX_FLAG);
+        }
+    } else {
+        this->cubeBlock.template IterateMmDsQSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB>(
+            this->dkWorkSpaceGm, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
+        } else {
+            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
+        }
+        this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB, DK_IDX>(
+            this->dkWorkSpaceGm, smallSDConstInfo, this->constInfo, compatRunInfo);
+        if ASCEND_IS_AIC {
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
+            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
+        }
+    }
+
+    this->cubeBlock.template IterateMmPDySmallSD<OUTDTYPE, KernelBaseClass::IS_DV_WRITE_UB>(
+        this->dvGm, pL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
+    }
+    needSyncDkMM = true;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -351,56 +477,25 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     }
     InitSmallSDCursor();
 
-    SmallSDPipelineSlot slots[2];
-    SmallSDPipelineSlot nextSlot;
+    SmallSDRunInfo runInfos[2];
+    SmallSDRunInfo nextRunInfo = {};
     bool needSyncDkMM = false;
     for (int64_t taskId = 0; taskId <= groupCount; ++taskId) {
         this->isLastLoop = taskId == groupCount;
-        FagRunInfo prevRunInfo;
         if (taskId > 0) {
-            BuildCompatRunInfo(prevRunInfo, slots[(taskId + 1) & 1]);
-            ProcessVec1SmallSD(prevRunInfo); // v1: softmaxGrad
+            ProcessVec1SmallSD(runInfos[(taskId + 1) & 1]); // v1: softmaxGrad
         }
         if (!this->isLastLoop) {
-            PrepareSmallSDSlot(slots[taskId & 1], taskId);
+            PrepareSmallSDRunInfo(runInfos[taskId & 1], taskId);
             const bool hasNext = (taskId + 1 < groupCount);
             if (hasNext) {
                 AdvanceSmallSDCursor();
-                PrepareSmallSDSlot(nextSlot, taskId + 1);
+                PrepareSmallSDRunInfo(nextRunInfo, taskId + 1);
             }
-            FagRunInfo runInfo;
-            BuildCompatRunInfo(runInfo, slots[taskId & 1]);
-            SetSmallSDPreloadArgs(runInfo, nextSlot, hasNext);
-
-            if constexpr (KernelBaseClass::IS_DK_WRITE_UB) {
-                if ASCEND_IS_AIC {
-                    if (needSyncDkMM) {
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
-                        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_DETER_FIX_FLAG);
-                    }
-                }
-            }
-
-            LocalTensor<CALC_TYPE> mm2ResTensor =
-                this->mm2ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-            IterateMmQKSmallSD(mm2ResTensor, runInfo);
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_FLAG[taskId & 1]);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C2_TO_V2_FLAG[taskId & 1]);
-            }
-
-            LocalTensor<CALC_TYPE> mm1ResTensor =
-                this->mm1ResBuf[runInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-            IterateMmDyVSmallSD(mm1ResTensor, runInfo);
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[taskId & 1]);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[taskId & 1]);
-            }
-
-            CopyMaxSumSmallSD(runInfo, taskId);
+            IssueMm1Mm2SmallSD(runInfos[taskId & 1], nextRunInfo, hasNext, needSyncDkMM);
         }
         if (taskId > 0) {
-            ComputeDqkvSmallSD(prevRunInfo, needSyncDkMM, taskId);
+            ComputeDqkvSmallSD(runInfos[(taskId + 1) & 1], needSyncDkMM, taskId);
         }
     }
 }

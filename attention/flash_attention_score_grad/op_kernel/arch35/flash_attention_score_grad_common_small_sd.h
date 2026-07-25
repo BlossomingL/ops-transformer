@@ -76,7 +76,7 @@ struct SmallSDTaskCursor {
     SmallSDOffsets offsets;
 };
 
-struct SmallSDPipelineSlot {
+struct SmallSDRunInfo {
     int64_t taskId;
     int64_t batchIdx;
     int64_t n2Idx;
