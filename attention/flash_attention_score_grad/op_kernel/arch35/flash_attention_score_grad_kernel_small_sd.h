@@ -40,6 +40,10 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitSmallSDTndCursor();
+    __aicore__ inline void SetSmallSDAxisRunInfo(FagRunInfo &runInfo, int64_t index);
+    __aicore__ inline void SetSmallSDRunInfo(FagRunInfo &runInfo, FagRunInfo &nextRunInfo, int64_t taskId,
+                                             int64_t index, int64_t nextIndex);
     SmallSDTilingType smallSDTilingData;
 };
 
@@ -59,22 +63,77 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::InitSmallSDTndCursor()
+{
+    if constexpr (IS_TND) {
+        const int64_t startBatch = smallSDTilingData->tndCoreParam[this->cBlockIdx].startBatch;
+        const int64_t startN2 = smallSDTilingData->tndCoreParam[this->cBlockIdx].startN2;
+        const int64_t blockStart = smallSDTilingData->tndCoreParam[this->cBlockIdx].blockStart;
+        const int64_t qPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].qPrefix;
+        const int64_t kvPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].kvPrefix;
+        this->curBatchIdx = startBatch;
+        this->curBatchTotalBaseIdx = blockStart - startN2;
+        this->curBatchTotalS1BOffset = qPrefix * this->constInfo.commonConstInfo.n2GD;
+        this->curBatchTotalS2BOffset = kvPrefix * this->constInfo.commonConstInfo.n2D;
+        this->curBatchTotalS1BOffsetForDv = qPrefix * this->constInfo.commonConstInfo.n2GDv;
+        this->curBatchTotalS2BOffsetForDv = kvPrefix * this->constInfo.commonConstInfo.n2Dv;
+        this->curBatchTotalS1S2SizeAlign = smallSDTilingData->tndCoreParam[this->cBlockIdx].s1s2AlignPrefix;
+        this->curBatchTotalS1S2Size = smallSDTilingData->tndCoreParam[this->cBlockIdx].s1s2Prefix;
+        this->curBatchTotalS2Size = kvPrefix;
+        if constexpr (IS_ROPE) {
+            this->curBatchTotalS1BRopeOffset = qPrefix * this->constInfo.commonConstInfo.n2GDr;
+            this->curBatchTotalS2BRopeOffset = kvPrefix * this->constInfo.commonConstInfo.n2Dr;
+        }
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDAxisRunInfo(FagRunInfo &runInfo,
+                                                                                         int64_t index)
+{
+    const int64_t n2Size = smallSDTilingData->baseParam.n2Size;
+    const int64_t boIdx = index / n2Size;
+    const int64_t n2oIdx = index - boIdx * n2Size;
+    int64_t actualS1Len = smallSDTilingData->baseParam.s1;
+    int64_t actualS2Len = smallSDTilingData->baseParam.s2;
+    if constexpr (IS_TND) {
+        this->GetSeqQlenKvlenByBidx(boIdx, actualS1Len, actualS2Len);
+    }
+    this->SetAxisRunInfo(runInfo, 0, actualS2Len, boIdx, n2oIdx, 0, 0, 0);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDRunInfo(FagRunInfo &runInfo,
+                                                                                     FagRunInfo &nextRunInfo,
+                                                                                     int64_t taskId, int64_t index,
+                                                                                     int64_t nextIndex)
+{
+    SetSmallSDAxisRunInfo(runInfo, index);
+    if (nextIndex != -1) {
+        SetSmallSDAxisRunInfo(nextRunInfo, nextIndex);
+    }
+    this->SetRunInfo(runInfo, nextRunInfo, taskId, index, nextIndex);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::Process()
 {
     static_assert(SPLIT_AXIS == BN2, "SmallSD only supports BN2 split axis.");
     static_assert(!IS_BN2_MULTIBLK, "SmallSD does not support BN2 multi block.");
 
-    if (this->tilingData->s1s2BNGS1S2BlockNumList.blockEnds[this->cBlockIdx] == 0) {
+    const int64_t groupCount = smallSDTilingData->coreTaskParam[this->cBlockIdx].groupCount;
+    if (groupCount == 0) {
         return;
     }
+    InitSmallSDTndCursor();
+
     int64_t taskId = 0;
     FagRunInfo runInfos[2]; // for cv ping pong
-    int64_t nextValidBlockInnerIdx = 0;
-    int64_t blockInnerIdx = 0;
-    int64_t curLoopIdx = 0; // just for continuous split core
-    nextValidBlockInnerIdx = this->GetNextValidIdx(
-        runInfos[0], taskId, this->tilingData->s1s2BNGS1S2BlockNumList.blockStarts[this->cBlockIdx], curLoopIdx);
-    blockInnerIdx = nextValidBlockInnerIdx;
+    int64_t nextValidBlockInnerIdx = smallSDTilingData->coreTaskParam[this->cBlockIdx].blockStart;
+    int64_t blockInnerIdx = smallSDTilingData->coreTaskParam[this->cBlockIdx].blockStart;
+    const int64_t blockEnd = smallSDTilingData->coreTaskParam[this->cBlockIdx].blockEnd;
 
     FagRunInfo prevRunInfo;
     bool needSyncDkMM = false;
@@ -85,15 +144,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
             this->vecBlock.ProcessVec1(this->constInfo, prevRunInfo); // v1: softmaxGrad
         }
         if (!this->isLastLoop) {
-            nextValidBlockInnerIdx =
-                this->GetNextValidIdx(runInfos[(taskId + 1) & 1], taskId + 1, blockInnerIdx + 1, curLoopIdx + 1);
-            this->SetRunInfo(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, blockInnerIdx,
-                             nextValidBlockInnerIdx);
-            if (this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx || IS_TND_SWIZZLE) {
-                curLoopIdx++;
-            } else {
-                blockInnerIdx++;
-            }
+            nextValidBlockInnerIdx = (blockInnerIdx + 1 < blockEnd) ? (blockInnerIdx + 1) : -1;
+            SetSmallSDRunInfo(runInfos[taskId & 1], runInfos[(taskId + 1) & 1], taskId, blockInnerIdx,
+                              nextValidBlockInnerIdx);
 
             if constexpr (KernelBaseClass::IS_DK_WRITE_UB) {
                 if ASCEND_IS_AIC {
