@@ -53,6 +53,8 @@ private:
     __aicore__ inline void IssueMm1Mm2SmallSD(const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo,
                                              bool hasNext, bool &needSyncDkMM);
     __aicore__ inline void ComputeDqkvSmallSD(const SmallSDRunInfo &runInfo, bool &needSyncDkMM, int64_t taskId);
+    __aicore__ inline void ProcessSingleGroupSmallSD();
+    __aicore__ inline void ProcessMultiGroupSmallSD(int64_t groupCount);
     SmallSDTilingType smallSDTilingData;
     SmallSDConstInfo smallSDConstInfo;
     SmallSDTaskCursor smallSDCursor;
@@ -466,17 +468,25 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::ProcessSingleGroupSmallSD()
 {
-    static_assert(SPLIT_AXIS == BN2, "SmallSD only supports BN2 split axis.");
-    static_assert(!IS_BN2_MULTIBLK, "SmallSD does not support BN2 multi block.");
+    SmallSDRunInfo runInfo;
+    SmallSDRunInfo nextRunInfo = {};
+    bool needSyncDkMM = false;
 
-    const int64_t groupCount = smallSDConstInfo.groupCount;
-    if (groupCount == 0) {
-        return;
-    }
-    InitSmallSDCursor();
+    this->isLastLoop = false;
+    PrepareSmallSDRunInfo(runInfo, 0);
+    IssueMm1Mm2SmallSD(runInfo, nextRunInfo, false, needSyncDkMM);
 
+    this->isLastLoop = true;
+    ProcessVec1SmallSD(runInfo);
+    ComputeDqkvSmallSD(runInfo, needSyncDkMM, 1);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
+FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::ProcessMultiGroupSmallSD(int64_t groupCount)
+{
     SmallSDRunInfo runInfos[2];
     SmallSDRunInfo nextRunInfo = {};
     bool needSyncDkMM = false;
@@ -498,6 +508,25 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
             ComputeDqkvSmallSD(runInfos[(taskId + 1) & 1], needSyncDkMM, taskId);
         }
     }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::Process()
+{
+    static_assert(SPLIT_AXIS == BN2, "SmallSD only supports BN2 split axis.");
+    static_assert(!IS_BN2_MULTIBLK, "SmallSD does not support BN2 multi block.");
+
+    const int64_t groupCount = smallSDConstInfo.groupCount;
+    if (groupCount == 0) {
+        return;
+    }
+    InitSmallSDCursor();
+
+    if (groupCount == 1) {
+        ProcessSingleGroupSmallSD();
+        return;
+    }
+    ProcessMultiGroupSmallSD(groupCount);
 }
 
 } // namespace FagBaseApi
