@@ -515,6 +515,17 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 {
     static_assert(SPLIT_AXIS == BN2, "SmallSD only supports BN2 split axis.");
     static_assert(!IS_BN2_MULTIBLK, "SmallSD does not support BN2 multi block.");
+    static_assert(!IS_ATTEN_MASK && !IS_PSE && !IS_DROP, "SmallSD does not support optional inputs.");
+    static_assert(!IS_ROPE && !IS_D_NO_EQUAL, "SmallSD requires D == Dv without rope.");
+    static_assert(!IS_NZ_OUT && !IS_TND_SWIZZLE, "SmallSD does not support NZ output or TND swizzle.");
+    static_assert(DETER_SPARSE_TYPE == NO_DETER, "SmallSD does not support deterministic sparse mode.");
+    static_assert((IsSameType<INPUT_TYPE, half>::value && IsSameType<OUTDTYPE, half>::value) ||
+                      (IsSameType<INPUT_TYPE, bfloat16_t>::value && IsSameType<OUTDTYPE, bfloat16_t>::value),
+                  "SmallSD only supports FP16/BF16 with matching output dtype.");
+    static_assert(s1TemplateType == S1TemplateType::Aligned128 && s2TemplateType == S2TemplateType::Aligned128,
+                  "SmallSD only supports 128x128 S template.");
+    static_assert(dTemplateType == DTemplateType::Aligned64 || dTemplateType == DTemplateType::Aligned128,
+                  "SmallSD only supports D template 64 or 128.");
 
     const int64_t groupCount = smallSDConstInfo.groupCount;
     if (groupCount == 0) {
