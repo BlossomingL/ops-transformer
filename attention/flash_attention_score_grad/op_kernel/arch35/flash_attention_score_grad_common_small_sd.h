@@ -73,6 +73,13 @@ struct SmallSDConstInfo {
     uint32_t blockEnd;
     uint32_t groupCount;
     float scaleValue;
+    int64_t startBatch;
+    int64_t startN2;
+    int64_t startQPrefix;
+    int64_t startKvPrefix;
+    int64_t startS1S2Prefix;
+    int64_t startS1S2AlignPrefix;
+    SmallSDOffsets initialOffsets;
 };
 
 struct SmallSDTaskCursor {

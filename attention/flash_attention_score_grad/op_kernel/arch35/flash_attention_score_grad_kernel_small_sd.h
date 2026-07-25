@@ -79,6 +79,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::InitSmallSDConstInfo()
 {
+    smallSDConstInfo = {};
     smallSDConstInfo.bSize = smallSDTilingData->baseParam.bSize;
     smallSDConstInfo.n1Size = smallSDTilingData->baseParam.n1Size;
     smallSDConstInfo.n2Size = smallSDTilingData->baseParam.n2Size;
@@ -105,6 +106,24 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     smallSDConstInfo.blockEnd = smallSDTilingData->coreTaskParam[this->cBlockIdx].blockEnd;
     smallSDConstInfo.groupCount = smallSDTilingData->coreTaskParam[this->cBlockIdx].groupCount;
     smallSDConstInfo.scaleValue = smallSDTilingData->baseParam.scaleValue;
+    smallSDConstInfo.initialOffsets.q = smallSDTilingData->coreTaskParam[this->cBlockIdx].qOffset;
+    smallSDConstInfo.initialOffsets.k = smallSDTilingData->coreTaskParam[this->cBlockIdx].kOffset;
+    smallSDConstInfo.initialOffsets.v = smallSDTilingData->coreTaskParam[this->cBlockIdx].vOffset;
+    smallSDConstInfo.initialOffsets.dy = smallSDTilingData->coreTaskParam[this->cBlockIdx].dyOffset;
+    smallSDConstInfo.initialOffsets.attention = smallSDTilingData->coreTaskParam[this->cBlockIdx].attentionOffset;
+    smallSDConstInfo.initialOffsets.softmaxMax = smallSDTilingData->coreTaskParam[this->cBlockIdx].maxOffset;
+    smallSDConstInfo.initialOffsets.softmaxSum = smallSDTilingData->coreTaskParam[this->cBlockIdx].sumOffset;
+    smallSDConstInfo.initialOffsets.dq = smallSDTilingData->coreTaskParam[this->cBlockIdx].dqOffset;
+    smallSDConstInfo.initialOffsets.dk = smallSDTilingData->coreTaskParam[this->cBlockIdx].dkOffset;
+    smallSDConstInfo.initialOffsets.dv = smallSDTilingData->coreTaskParam[this->cBlockIdx].dvOffset;
+    if constexpr (IS_TND) {
+        smallSDConstInfo.startBatch = smallSDTilingData->tndCoreParam[this->cBlockIdx].startBatch;
+        smallSDConstInfo.startN2 = smallSDTilingData->tndCoreParam[this->cBlockIdx].startN2;
+        smallSDConstInfo.startQPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].qPrefix;
+        smallSDConstInfo.startKvPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].kvPrefix;
+        smallSDConstInfo.startS1S2Prefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].s1s2Prefix;
+        smallSDConstInfo.startS1S2AlignPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].s1s2AlignPrefix;
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -121,12 +140,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 {
     smallSDCursor = {};
     if constexpr (IS_TND) {
-        smallSDCursor.batchIdx = smallSDTilingData->tndCoreParam[this->cBlockIdx].startBatch;
-        smallSDCursor.n2Idx = smallSDTilingData->tndCoreParam[this->cBlockIdx].startN2;
-        smallSDCursor.qPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].qPrefix;
-        smallSDCursor.kvPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].kvPrefix;
-        smallSDCursor.s1s2Prefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].s1s2Prefix;
-        smallSDCursor.s1s2AlignPrefix = smallSDTilingData->tndCoreParam[this->cBlockIdx].s1s2AlignPrefix;
+        smallSDCursor.batchIdx = smallSDConstInfo.startBatch;
+        smallSDCursor.n2Idx = smallSDConstInfo.startN2;
+        smallSDCursor.qPrefix = smallSDConstInfo.startQPrefix;
+        smallSDCursor.kvPrefix = smallSDConstInfo.startKvPrefix;
+        smallSDCursor.s1s2Prefix = smallSDConstInfo.startS1S2Prefix;
+        smallSDCursor.s1s2AlignPrefix = smallSDConstInfo.startS1S2AlignPrefix;
         LoadSmallSDTndBatch();
     } else {
         const int64_t blockStart = smallSDConstInfo.blockStart;
@@ -136,16 +155,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
         smallSDCursor.kvPrefix = smallSDCursor.batchIdx * smallSDConstInfo.s2;
         smallSDCursor.s1s2Prefix = smallSDCursor.batchIdx * smallSDConstInfo.s1 * smallSDConstInfo.s2;
         smallSDCursor.s1s2AlignPrefix = smallSDCursor.batchIdx * smallSDConstInfo.s1 * smallSDConstInfo.s2Align16;
-        smallSDCursor.offsets.q = smallSDTilingData->coreTaskParam[this->cBlockIdx].qOffset;
-        smallSDCursor.offsets.k = smallSDTilingData->coreTaskParam[this->cBlockIdx].kOffset;
-        smallSDCursor.offsets.v = smallSDTilingData->coreTaskParam[this->cBlockIdx].vOffset;
-        smallSDCursor.offsets.dy = smallSDTilingData->coreTaskParam[this->cBlockIdx].dyOffset;
-        smallSDCursor.offsets.attention = smallSDTilingData->coreTaskParam[this->cBlockIdx].attentionOffset;
-        smallSDCursor.offsets.softmaxMax = smallSDTilingData->coreTaskParam[this->cBlockIdx].maxOffset;
-        smallSDCursor.offsets.softmaxSum = smallSDTilingData->coreTaskParam[this->cBlockIdx].sumOffset;
-        smallSDCursor.offsets.dq = smallSDTilingData->coreTaskParam[this->cBlockIdx].dqOffset;
-        smallSDCursor.offsets.dk = smallSDTilingData->coreTaskParam[this->cBlockIdx].dkOffset;
-        smallSDCursor.offsets.dv = smallSDTilingData->coreTaskParam[this->cBlockIdx].dvOffset;
+        smallSDCursor.offsets = smallSDConstInfo.initialOffsets;
     }
 }
 
