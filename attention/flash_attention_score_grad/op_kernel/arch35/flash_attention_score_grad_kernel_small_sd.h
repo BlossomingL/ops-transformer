@@ -100,6 +100,21 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     smallSDConstInfo.qSStride = smallSDTilingData->strideParam.qS;
     smallSDConstInfo.kvSStride = smallSDTilingData->strideParam.kvS;
     smallSDConstInfo.layoutType = smallSDTilingData->baseParam.layoutType;
+    if constexpr (IS_TND) {
+        smallSDConstInfo.qRowStride = smallSDConstInfo.n2Size * smallSDConstInfo.d;
+        smallSDConstInfo.kvRowStride = smallSDConstInfo.n2Size * smallSDConstInfo.d;
+    } else {
+        if (smallSDConstInfo.layoutType == BNGSD) {
+            smallSDConstInfo.qRowStride = smallSDConstInfo.d;
+            smallSDConstInfo.kvRowStride = smallSDConstInfo.d;
+        } else if (smallSDConstInfo.layoutType == SBNGD) {
+            smallSDConstInfo.qRowStride = smallSDConstInfo.bSize * smallSDConstInfo.n2Size * smallSDConstInfo.d;
+            smallSDConstInfo.kvRowStride = smallSDConstInfo.bSize * smallSDConstInfo.n2Size * smallSDConstInfo.d;
+        } else {
+            smallSDConstInfo.qRowStride = smallSDConstInfo.n2Size * smallSDConstInfo.d;
+            smallSDConstInfo.kvRowStride = smallSDConstInfo.n2Size * smallSDConstInfo.d;
+        }
+    }
     smallSDConstInfo.tndMaxSumLayout = smallSDTilingData->baseParam.tndMaxSumLayout;
     smallSDConstInfo.isSingleTask = smallSDTilingData->baseParam.isSingleTask;
     smallSDConstInfo.blockStart = smallSDTilingData->coreTaskParam[this->cBlockIdx].blockStart;

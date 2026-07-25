@@ -66,6 +66,8 @@ struct SmallSDConstInfo {
     uint64_t dkvGroupStride;
     uint64_t qSStride;
     uint64_t kvSStride;
+    uint64_t qRowStride;
+    uint64_t kvRowStride;
     uint32_t layoutType;
     uint32_t tndMaxSumLayout;
     uint32_t isSingleTask;
