@@ -22,6 +22,80 @@ namespace optiling {
 namespace fag {
 constexpr uint32_t MAX_CORE_NUM = 36;
 constexpr uint32_t TND_SWIZZLE_PREFIX_NUM = 129;
+constexpr uint32_t SMALL_SD_MAX_AIC = MAX_CORE_NUM;
+
+class SmallSDBaseParamRegbase {
+public:
+    uint16_t maxS1;
+    uint16_t maxS2;
+    uint16_t actualD;
+    uint16_t n2Size;
+    uint16_t usedCoreNum;
+    uint16_t s1;
+    uint16_t s2;
+    uint16_t s2Align16;
+    uint32_t validTaskCount;
+    uint32_t isTnd;
+    uint32_t layoutType;
+    uint32_t tndMaxSumLayout;
+    uint64_t workspaceBaseOffset;
+    uint64_t workspaceSize;
+    float scaleValue;
+    uint32_t reserved;
+};
+
+class SmallSDStrideParamRegbase {
+public:
+    uint64_t qGroup;
+    uint64_t kvGroup;
+    uint64_t dyGroup;
+    uint64_t attentionGroup;
+    uint64_t maxSumGroup;
+    uint64_t dqGroup;
+    uint64_t dkvGroup;
+    uint64_t qS;
+    uint64_t kvS;
+};
+
+class SmallSDCoreTaskParamRegbase {
+public:
+    uint32_t groupCount;
+    uint32_t blockStart;
+    uint32_t blockEnd;
+    uint32_t reserved;
+    uint64_t qOffset;
+    uint64_t kOffset;
+    uint64_t vOffset;
+    uint64_t dyOffset;
+    uint64_t attentionOffset;
+    uint64_t maxOffset;
+    uint64_t sumOffset;
+    uint64_t dqOffset;
+    uint64_t dkOffset;
+    uint64_t dvOffset;
+};
+
+class SmallSDTndCoreParamRegbase {
+public:
+    uint32_t taskCount;
+    uint16_t startBatch;
+    uint16_t startN2;
+    uint32_t blockStart;
+    uint32_t blockEnd;
+    uint64_t qPrefix;
+    uint64_t kvPrefix;
+    uint64_t s1s2Prefix;
+    uint64_t s1s2AlignPrefix;
+};
+
+class FlashAttentionScoreGradSmallSDTilingData {
+public:
+    SmallSDBaseParamRegbase baseParam;
+    SmallSDStrideParamRegbase strideParam;
+    SmallSDCoreTaskParamRegbase coreTaskParam[SMALL_SD_MAX_AIC];
+    SmallSDTndCoreParamRegbase tndCoreParam[SMALL_SD_MAX_AIC];
+};
+
 class FlashAttentionScoreGradEmptyTensorTilingDataRegbase {
 public:
     uint32_t formerDqNum;

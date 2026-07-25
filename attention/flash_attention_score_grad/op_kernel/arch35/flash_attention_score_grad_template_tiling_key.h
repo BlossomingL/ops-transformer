@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -18,7 +18,7 @@
  #include "ascendc/host_api/tiling/template_argument.h"
  #include "flash_attention_score_grad_tiling_data_regbase.h"
  
- // kernel通过宏定义隔离dtype编译tilingkey，降低耗时。tiling侧没有相关宏
+ // kernel閫氳繃瀹忓畾涔夐殧绂籨type缂栬瘧tilingkey锛岄檷浣庤€楁椂銆倀iling渚ф病鏈夌浉鍏冲畯
  #ifndef ORIG_DTYPE_QUERY
  #define ORIG_DTYPE_QUERY (-1)
  #endif
@@ -44,9 +44,10 @@ using FagTilingWithTemplateTTTF =
     optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true, false>;
 using FagTilingWithTemplateTTTT =
     optiling::fag::FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<true, true, true, true>;
+using FagSmallSDTilingWithTemplate = optiling::fag::FlashAttentionScoreGradSmallSDTilingData;
 
- // 可表示的tilingkey范围为64bit，注意不能超过限制
- ASCENDC_TPL_ARGS_DECL(FlashAttentionScoreGrad, // 算子唯一标识，可以opType保持一致
+ // 鍙〃绀虹殑tilingkey鑼冨洿涓?4bit锛屾敞鎰忎笉鑳借秴杩囬檺鍒?
+ ASCENDC_TPL_ARGS_DECL(FlashAttentionScoreGrad, // 绠楀瓙鍞竴鏍囪瘑锛屽彲浠pType淇濇寔涓€鑷?
      // bit: 0 IsRegbasePlatformValue
      ASCENDC_TPL_BOOL_DECL(IsEmptyTensor, 0, 1),
      // bit: 3-1 SplitAxis
@@ -120,7 +121,9 @@ using FagTilingWithTemplateTTTT =
      // 0: NoSwizzle
      // 1: Enable TND Swizzle
      ASCENDC_TPL_BOOL_DECL(IsTndSwizzle, 0, 1),
-     // bit: 54 IsRegbasePlatformValue
+     // bit: 54 IsSmallSD
+     ASCENDC_TPL_BOOL_DECL(IsSmallSD, 0, 1),
+     // bit: 55 IsRegbasePlatformValue
      ASCENDC_TPL_BOOL_DECL(IsRegbase, 0, 1),
  );
  
@@ -130,6 +133,29 @@ using FagTilingWithTemplateTTTT =
          // FP16
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+             ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 1),
+             ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 3),
+             ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
+             ASCENDC_TPL_BOOL_SEL(IsDrop, 0),
+             ASCENDC_TPL_BOOL_SEL(IsPse, 0),
+             ASCENDC_TPL_BOOL_SEL(IsAttenMask, 0),
+             ASCENDC_TPL_UINT_SEL(S1TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 64, 128),
+             ASCENDC_TPL_UINT_SEL(DeterType, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0),
+             ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
+             ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+             ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 1),
+             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagSmallSDTilingWithTemplate)
+         ),
+         ASCENDC_TPL_ARGS_SEL(
+             ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
              ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
              ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsTnd, 0),
@@ -147,6 +173,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -169,6 +196,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -191,6 +219,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -213,6 +242,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -235,6 +265,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -257,6 +288,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
@@ -279,6 +311,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -301,6 +334,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -323,6 +357,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -345,6 +380,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -367,6 +403,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -389,6 +426,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -411,6 +449,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -433,6 +472,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -455,6 +495,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -477,6 +518,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -499,6 +541,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
@@ -521,6 +564,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -543,6 +587,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -565,6 +610,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -587,6 +633,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -609,6 +656,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -631,6 +679,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -653,6 +702,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -675,6 +725,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 3),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTT)
          ),
@@ -683,6 +734,29 @@ using FagTilingWithTemplateTTTT =
          // BF16
          ASCENDC_TPL_ARGS_SEL(
              ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+             ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 1),
+             ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 2),
+             ASCENDC_TPL_BOOL_SEL(IsTnd, 0, 1),
+             ASCENDC_TPL_BOOL_SEL(IsDrop, 0),
+             ASCENDC_TPL_BOOL_SEL(IsPse, 0),
+             ASCENDC_TPL_BOOL_SEL(IsAttenMask, 0),
+             ASCENDC_TPL_UINT_SEL(S1TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 64, 128),
+             ASCENDC_TPL_UINT_SEL(DeterType, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0),
+             ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
+             ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+             ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 1),
+             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagSmallSDTilingWithTemplate)
+         ),
+         ASCENDC_TPL_ARGS_SEL(
+             ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
              ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
              ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsTnd, 0),
@@ -700,6 +774,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -722,6 +797,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -744,6 +820,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -766,6 +843,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -788,6 +866,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -810,6 +889,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
@@ -832,6 +912,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -854,6 +935,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -876,6 +958,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -898,6 +981,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -920,6 +1004,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -942,6 +1027,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0, 1),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -964,6 +1050,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -986,6 +1073,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -1008,6 +1096,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -1030,6 +1119,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -1052,6 +1142,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
@@ -1074,6 +1165,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -1096,6 +1188,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -1118,6 +1211,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -1140,6 +1234,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -1162,6 +1257,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -1184,6 +1280,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -1206,6 +1303,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -1228,6 +1326,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 2),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTT)
          ),
@@ -1254,6 +1353,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -1276,6 +1376,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -1298,6 +1399,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -1320,6 +1422,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
@@ -1342,6 +1445,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -1364,6 +1468,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -1386,6 +1491,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
@@ -1408,6 +1514,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
          ),
@@ -1430,6 +1537,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFTF)
          ),
@@ -1452,6 +1560,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ), 
@@ -1474,6 +1583,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFTF)
          ),
@@ -1496,6 +1606,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTFFF)
          ),
@@ -1518,6 +1629,7 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
          ),
@@ -1540,12 +1652,13 @@ using FagTilingWithTemplateTTTT =
              ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
              ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
              ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
              ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
              ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
          ),
      #endif
   
-     // 空tensor
+     // 绌簍ensor
      ASCENDC_TPL_ARGS_SEL(
          ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 1),
          ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
@@ -1565,7 +1678,8 @@ using FagTilingWithTemplateTTTT =
          ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 0),
          ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
          ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
-         ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+         ASCENDC_TPL_BOOL_SEL(IsSmallSD, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
          ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
      ),
  );

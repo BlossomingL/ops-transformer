@@ -36,6 +36,7 @@ using namespace AscendC::MicroAPI;
 #include "flash_attention_score_grad_block_cube.h"
 #include "flash_attention_score_grad_kernel.h"
 #include "flash_attention_score_grad_kernel_deter.h"
+#include "flash_attention_score_grad_kernel_small_sd.h"
 
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_ATTEN_MASK, IS_PSE, IS_DROP, \
                                                       IS_TND, IS_BN2_MULTIBLK, DETER_SPARSE_TYPE, IS_N_EQUAL,          \
@@ -197,7 +198,7 @@ using namespace AscendC::MicroAPI;
 template <uint8_t splitAxis, uint8_t inputDType, bool isTnd, bool isDrop, bool isPse, bool isAttenMask,
           uint16_t s1TemplateType, uint16_t s2TemplateType, uint16_t dTemplateType, uint8_t deterType, bool isNEqual,
           bool isBn2MultiBlk, bool isDNoEqual, bool isRope, uint8_t outDType, bool isNzOut, bool isTndSwizzle,
-          bool isRegbase>
+          bool isSmallSD, bool isRegbase>
 inline __aicore__ void
 RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dy,
            __gm__ uint8_t *pse_shift, __gm__ uint8_t *drop_mask, __gm__ uint8_t *padding_mask,
@@ -210,6 +211,37 @@ RegbaseFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __
            __gm__ uint8_t *dkRope, __gm__ uint8_t *dsink, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    if constexpr (isSmallSD) {
+        SetMaskNorm();
+        SetSysWorkspace(workspace);
+        TPipe pipeSmallSD;
+        const __gm__ FlashAttentionScoreGradSmallSDTilingData *__restrict smallSDTilingData =
+            (const __gm__ FlashAttentionScoreGradSmallSDTilingData *__restrict)(tiling_data);
+#if (ORIG_DTYPE_QUERY == DT_FLOAT16)
+        using CubeBlockType =
+            FagSmallSDApi::SmallSDCubeBlock<half, float, half, isTnd, dTemplateType, 0>;
+        using VecBlockType =
+            FagSmallSDApi::SmallSDVectorBlock<half, float, half, isTnd, dTemplateType, 0>;
+        FagSmallSDApi::FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType, isTnd, dTemplateType, 0,
+                                                            false>
+            op;
+        op.Init(smallSDTilingData, &pipeSmallSD);
+        op.Process();
+#endif
+#if (ORIG_DTYPE_QUERY == DT_BF16)
+        using CubeBlockType =
+            FagSmallSDApi::SmallSDCubeBlock<bfloat16_t, float, bfloat16_t, isTnd, dTemplateType, 0>;
+        using VecBlockType =
+            FagSmallSDApi::SmallSDVectorBlock<bfloat16_t, float, bfloat16_t, isTnd, dTemplateType, 0>;
+        FagSmallSDApi::FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType, isTnd, dTemplateType, 0,
+                                                            false>
+            op;
+        op.Init(smallSDTilingData, &pipeSmallSD);
+        op.Process();
+#endif
+        pipeSmallSD.Destroy();
+        return;
+    }
     TPipe pipeIn;
     SetMaskNorm();
     SetSysWorkspace(workspace);
