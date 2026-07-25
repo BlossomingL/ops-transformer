@@ -42,6 +42,7 @@ public:
 private:
     __aicore__ inline void InitSmallSDTndCursor();
     __aicore__ inline void SetSmallSDAxisRunInfo(FagRunInfo &runInfo, int64_t index);
+    __aicore__ inline void UpdateSmallSDGmOffset(FagRunInfo &runInfo, int64_t index);
     __aicore__ inline void SetSmallSDRunInfo(FagRunInfo &runInfo, FagRunInfo &nextRunInfo, int64_t taskId,
                                              int64_t index, int64_t nextIndex);
     SmallSDTilingType smallSDTilingData;
@@ -105,6 +106,47 @@ FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDAxi
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
+FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::UpdateSmallSDGmOffset(FagRunInfo &runInfo,
+                                                                                         int64_t index)
+{
+    if constexpr (IS_TND) {
+        const int64_t n2oIdx = runInfo.commonRunInfo.n2oIdx;
+        const int64_t qOffset = runInfo.lastBatchTotalS1BOffset + n2oIdx * this->constInfo.commonConstInfo.dSize;
+        const int64_t kvOffset = runInfo.lastBatchTotalS2BOffset + n2oIdx * this->constInfo.commonConstInfo.dSize;
+        runInfo.commonRunInfo.queryOffset = qOffset;
+        runInfo.dyOffset = qOffset;
+        runInfo.commonRunInfo.keyOffset = kvOffset;
+        runInfo.commonRunInfo.valueOffset = kvOffset;
+        runInfo.queryOffsetWithRope = qOffset;
+        runInfo.keyOffsetWithRope = kvOffset;
+        runInfo.queryOffsetWithRopeForMm12 = qOffset;
+        runInfo.keyOffsetWithRopeForMm12 = kvOffset;
+    } else {
+        const int64_t n2Size = smallSDTilingData->baseParam.n2Size;
+        const int64_t blockStart = smallSDTilingData->coreTaskParam[this->cBlockIdx].blockStart;
+        const int64_t startN2 = blockStart % n2Size;
+        const int64_t taskOffset = index - blockStart;
+        const int64_t batchStep = (startN2 + taskOffset) / n2Size;
+        const int64_t groupStep = taskOffset - batchStep;
+        const int64_t qOffset = smallSDTilingData->coreTaskParam[this->cBlockIdx].qOffset +
+                                groupStep * smallSDTilingData->strideParam.qGroup +
+                                batchStep * smallSDTilingData->strideParam.qS;
+        const int64_t kvOffset = smallSDTilingData->coreTaskParam[this->cBlockIdx].kOffset +
+                                 groupStep * smallSDTilingData->strideParam.kvGroup +
+                                 batchStep * smallSDTilingData->strideParam.kvS;
+        runInfo.commonRunInfo.queryOffset = qOffset;
+        runInfo.dyOffset = qOffset;
+        runInfo.commonRunInfo.keyOffset = kvOffset;
+        runInfo.commonRunInfo.valueOffset = kvOffset;
+        runInfo.queryOffsetWithRope = qOffset;
+        runInfo.keyOffsetWithRope = kvOffset;
+        runInfo.queryOffsetWithRopeForMm12 = qOffset;
+        runInfo.keyOffsetWithRopeForMm12 = kvOffset;
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void
 FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDRunInfo(FagRunInfo &runInfo,
                                                                                      FagRunInfo &nextRunInfo,
                                                                                      int64_t taskId, int64_t index,
@@ -115,6 +157,13 @@ FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDRun
         SetSmallSDAxisRunInfo(nextRunInfo, nextIndex);
     }
     this->SetRunInfo(runInfo, nextRunInfo, taskId, index, nextIndex);
+    UpdateSmallSDGmOffset(runInfo, index);
+    if (nextIndex != -1) {
+        UpdateSmallSDGmOffset(nextRunInfo, nextIndex);
+        this->preloadArgs.nextQueryOffset = nextRunInfo.commonRunInfo.queryOffset;
+        this->preloadArgs.nextDyOffset = nextRunInfo.dyOffset;
+        this->preloadArgs.nextMOrN = nextRunInfo.commonRunInfo.s1RealSize;
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
