@@ -93,6 +93,9 @@ protected:
     void DoPostTiling();
     ge::graphStatus SaveToTilingData();
     bool IsSmallSDEligible() const;
+    void ResetSmallSDDerivedState();
+    void BuildSmallSDTaskRange();
+    ge::graphStatus ValidateSmallSDInvariant() const;
     ge::graphStatus InitSmallSDTilingData(bool isTnd);
     ge::graphStatus BuildSmallSDTilingData();
     void BuildSmallSDCoreRange();

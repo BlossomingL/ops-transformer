@@ -431,6 +431,24 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
 {
     SetSplitAxis(context_, fBaseParams);
     DoSplit();
+    fBaseParams.isSmallSD = IsSmallSDEligible();
+    if (fBaseParams.isSmallSD) {
+        ResetSmallSDDerivedState();
+        BuildSmallSDTaskRange();
+        auto smallSDRet = ValidateSmallSDInvariant();
+        if (smallSDRet == ge::GRAPH_SUCCESS) {
+            smallSDRet = InitTilingData();
+            if (smallSDRet != ge::GRAPH_SUCCESS) {
+                return smallSDRet;
+            }
+            DoPreTiling();
+            DoPostTiling();
+            DetermineMode(fBaseParams);
+            return ge::GRAPH_SUCCESS;
+        }
+        fBaseParams.isSmallSD = false;
+    }
+
     auto ret = DoSparse();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
@@ -464,7 +482,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     OP_LOGI(context_, "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], isTndSwizzle = [%d], isNzOut = [%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
             static_cast<int>(fBaseParams.enableSwizzle), tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
-    fBaseParams.isSmallSD = IsSmallSDEligible();
 
     ret = InitTilingData();
     if (ret != ge::GRAPH_SUCCESS) {
@@ -1322,6 +1339,7 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsSmallSDEligible() const
                          fBaseParams.d == fBaseParams.d1;
     const bool routeOk = fBaseParams.splitAxis == SplitAxisEnum::BN2 && fBaseParams.n1 == fBaseParams.n2 &&
                          fBaseParams.g == 1;
+    const bool sparseOk = !fBaseParams.isSparse && fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK);
     const bool derivedOk = !fBaseParams.isDeterministic && !fBaseParams.isBn2MultiBlk && !fBaseParams.isNzOut &&
                            !fBaseParams.enableSwizzle && fBaseParams.tailZeroCount == 0;
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
@@ -1330,7 +1348,92 @@ bool FlashAttentionScoreGradTilingNormalRegbase::IsSmallSDEligible() const
             return false;
         }
     }
-    return isSupportedLayout && isSupportedDtype && isSameOutputDtype && noOptional && shapeOk && routeOk && derivedOk;
+    return isSupportedLayout && isSupportedDtype && isSameOutputDtype && noOptional && shapeOk && routeOk && sparseOk &&
+           derivedOk;
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::ResetSmallSDDerivedState()
+{
+    fBaseParams.splitAxis = SplitAxisEnum::BN2;
+    fBaseParams.isBn2 = true;
+    fBaseParams.isBn2MultiBlk = false;
+    fBaseParams.isDeterministic = false;
+    fBaseParams.enableSwizzle = false;
+    fBaseParams.isNzOut = false;
+    fBaseParams.enablePreSfmg = false;
+    fBaseParams.isInvalidCol = false;
+    fBaseParams.isInvalidRow = false;
+    fBaseParams.sValueZeroUnderTND = false;
+    fBaseParams.sparseType = static_cast<uint8_t>(SparseType::DENSE);
+    fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::NO_DETER);
+    fBaseParams.noNeedDeter = true;
+    fBaseParams.deterMaxRound = 0;
+    fBaseParams.coreDivide = false;
+    fBaseParams.deterPrefixStep = 0;
+    fBaseParams.dropoutIsDivisibleBy8 = 0;
+    fBaseParams.dropMaskSize = 0;
+    tndBaseInfo.isTndSwizzle = false;
+    std::fill(std::begin(tndBaseInfo.tndStartBIdx), std::end(tndBaseInfo.tndStartBIdx), 0);
+    std::fill(std::begin(tndBaseInfo.tndPrefixSum), std::end(tndBaseInfo.tndPrefixSum), 0);
+    std::fill(std::begin(tndBaseInfo.tndS1S2PrefixSum), std::end(tndBaseInfo.tndS1S2PrefixSum), 0);
+    std::fill(std::begin(tndBaseInfo.tndS1S2AlignPrefixSum), std::end(tndBaseInfo.tndS1S2AlignPrefixSum), 0);
+    std::fill(std::begin(tndBaseInfo.tndSwizzleS1S2PrefixSum), std::end(tndBaseInfo.tndSwizzleS1S2PrefixSum), 0);
+    std::fill(std::begin(tndBaseInfo.tndSwizzleS1S2AlignPrefixSum),
+              std::end(tndBaseInfo.tndSwizzleS1S2AlignPrefixSum), 0);
+    std::fill(std::begin(tndBaseInfo.tndS2BlockPrefixSum), std::end(tndBaseInfo.tndS2BlockPrefixSum), 0);
+    std::fill(std::begin(fBaseParams.dqIsNeedDeter), std::end(fBaseParams.dqIsNeedDeter), static_cast<uint64_t>(-1));
+    std::fill(std::begin(fBaseParams.dkDvIsNeedDeter), std::end(fBaseParams.dkDvIsNeedDeter),
+              static_cast<uint64_t>(-1));
+}
+
+void FlashAttentionScoreGradTilingNormalRegbase::BuildSmallSDTaskRange()
+{
+    int64_t blockStarts[CORE_LIST_NUM] = {0};
+    int64_t blockEnds[CORE_LIST_NUM] = {0};
+    const int64_t fusedOuter = fBaseParams.b * fBaseParams.n2;
+    const int64_t blockFactor = (fusedOuter + fBaseParams.aicNum - 1) / fBaseParams.aicNum;
+    const int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
+
+    fBaseParams.blockOuter = blockOuter;
+    fBaseParams.blockFactor = blockFactor;
+    fBaseParams.maxValidBBLen = blockFactor;
+    for (int64_t i = 0; i < blockOuter; ++i) {
+        blockStarts[i] = blockFactor * i;
+        blockEnds[i] = std::min(blockFactor * (i + 1), fusedOuter);
+    }
+    std::copy(std::begin(blockStarts), std::end(blockStarts), std::begin(fBaseParams.blockStarts));
+    std::copy(std::begin(blockEnds), std::end(blockEnds), std::begin(fBaseParams.blockEnds));
+}
+
+ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::ValidateSmallSDInvariant() const
+{
+    OP_CHECK_IF(fBaseParams.blockOuter <= 0 || fBaseParams.blockOuter > static_cast<int64_t>(CORE_LIST_NUM),
+                OP_LOGW("ValidateSmallSDInvariant", "SmallSD blockOuter is invalid, blockOuter is %ld.",
+                        fBaseParams.blockOuter),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fBaseParams.s1Outer != 1 || fBaseParams.s2Outer != 1,
+                OP_LOGW("ValidateSmallSDInvariant",
+                        "SmallSD only supports one S1/S2 tile, s1Outer is %ld, s2Outer is %ld.",
+                        fBaseParams.s1Outer, fBaseParams.s2Outer),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fBaseParams.blockStarts[0] != 0 ||
+                    fBaseParams.blockEnds[fBaseParams.blockOuter - 1] != fBaseParams.b * fBaseParams.n2,
+                OP_LOGW("ValidateSmallSDInvariant", "SmallSD block range is invalid."),
+                return ge::GRAPH_FAILED);
+    if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(fBaseParams.b); ++i) {
+            OP_CHECK_IF(fBaseParams.actualSeqQlen[i] <= 0 || fBaseParams.actualSeqKvlen[i] <= 0,
+                        OP_LOGW("ValidateSmallSDInvariant",
+                                "SmallSD TND does not support zero length batch, batch is %u.", i),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(fBaseParams.actualSeqQlen[i] >= static_cast<int64_t>(ConstAxisTemplateNum::NUM128) ||
+                            fBaseParams.actualSeqKvlen[i] >= static_cast<int64_t>(ConstAxisTemplateNum::NUM128),
+                        OP_LOGW("ValidateSmallSDInvariant",
+                                "SmallSD TND sequence length exceeds 128, batch is %u.", i),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitSmallSDTilingData(bool isTnd)
