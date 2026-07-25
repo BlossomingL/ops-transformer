@@ -46,9 +46,8 @@ private:
     __aicore__ inline void LoadSmallSDTndBatch();
     __aicore__ inline void PrepareSmallSDRunInfo(SmallSDRunInfo &runInfo, int64_t taskId);
     __aicore__ inline void AdvanceSmallSDCursor();
-    __aicore__ inline void BuildCompatRunInfo(FagRunInfo &compatRunInfo, const SmallSDRunInfo &runInfo);
-    __aicore__ inline void SetSmallSDPreloadArgs(FagRunInfo &compatRunInfo, const SmallSDRunInfo &nextRunInfo,
-                                                 bool hasNext);
+    __aicore__ inline void SetSmallSDPreloadArgs(const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo,
+                                                bool hasNext);
     __aicore__ inline void ProcessVec1SmallSD(const SmallSDRunInfo &runInfo);
     __aicore__ inline void IssueMm1Mm2SmallSD(const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo,
                                              bool hasNext, bool &needSyncDkMM);
@@ -73,6 +72,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     BaseKernel::Init(key, value, dy, query, pseShift, dropMask, attenMask, y, softmaxMax, softmaxSum, prefixN,
                      actualSeqQlen, actualSeqKvlen, deqScaleQ, deqScaleK, deqScaleV, deqScaleDy, queryRope, keyRope,
                      sink, dq, dk, dv, dpse, dqRope, dkRope, dsink, workspace, fagTilingData, pipeIn);
+    this->vecBlock.SetSmallSDCompatConstInfo(this->constInfo);
     InitSmallSDConstInfo();
 }
 
@@ -251,61 +251,11 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void
-FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::BuildCompatRunInfo(FagRunInfo &compatRunInfo,
-                                                                                      const SmallSDRunInfo &runInfo)
-{
-    compatRunInfo = {};
-    compatRunInfo.commonRunInfo.boIdx = runInfo.batchIdx;
-    compatRunInfo.commonRunInfo.n2oIdx = runInfo.n2Idx;
-    compatRunInfo.commonRunInfo.goIdx = 0;
-    compatRunInfo.commonRunInfo.s1oIdx = 0;
-    compatRunInfo.commonRunInfo.taskId = runInfo.taskId;
-    compatRunInfo.commonRunInfo.taskIdMod2 = runInfo.taskId & 1;
-    compatRunInfo.commonRunInfo.s1RealSize = runInfo.shape.s1;
-    compatRunInfo.commonRunInfo.s2RealSize = runInfo.shape.s2;
-    compatRunInfo.commonRunInfo.actualS1Size = runInfo.shape.s1;
-    compatRunInfo.commonRunInfo.actualS2Size = runInfo.shape.s2;
-    compatRunInfo.commonRunInfo.halfS1RealSize = runInfo.shape.halfS1;
-    compatRunInfo.commonRunInfo.firstHalfS1RealSize = runInfo.shape.firstHalfS1;
-    compatRunInfo.commonRunInfo.s2SizeAcc = runInfo.kvPrefix;
-    compatRunInfo.commonRunInfo.b1SSOffsetAlign = runInfo.s1s2AlignPrefix;
-    compatRunInfo.commonRunInfo.b1SSOffset = runInfo.s1s2Prefix;
-    compatRunInfo.commonRunInfo.b1SSAttenMaskOffset = runInfo.s1s2Prefix;
-    compatRunInfo.commonRunInfo.s2StartIdx = 0;
-    compatRunInfo.commonRunInfo.s2AlignedSize = runInfo.shape.s2Align16;
-    compatRunInfo.commonRunInfo.vecCoreOffset = this->vSubBlockIdx * runInfo.shape.firstHalfS1;
-    compatRunInfo.commonRunInfo.queryOffset = runInfo.offsets.q;
-    compatRunInfo.commonRunInfo.keyOffset = runInfo.offsets.k;
-    compatRunInfo.commonRunInfo.valueOffset = runInfo.offsets.v;
-    compatRunInfo.s2oIdx = 0;
-    compatRunInfo.s2CvBegin = 0;
-    compatRunInfo.s2CvEnd = runInfo.shape.s2;
-    compatRunInfo.halfS2RealSize = runInfo.shape.halfS2;
-    compatRunInfo.firstHalfS2RealSize = runInfo.shape.firstHalfS2;
-    compatRunInfo.dyOffset = runInfo.offsets.dy;
-    compatRunInfo.queryOffsetWithRope = runInfo.offsets.q;
-    compatRunInfo.keyOffsetWithRope = runInfo.offsets.k;
-    compatRunInfo.queryOffsetWithRopeForMm12 = runInfo.offsets.q;
-    compatRunInfo.keyOffsetWithRopeForMm12 = runInfo.offsets.k;
-    compatRunInfo.maxsumOffset = runInfo.offsets.softmaxMax;
-    compatRunInfo.lastBatchIdx = runInfo.batchIdx;
-    compatRunInfo.lastBatchTotalS1BOffset = runInfo.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d;
-    compatRunInfo.lastBatchTotalS2BOffset = runInfo.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.d;
-    compatRunInfo.lastBatchTotalS1BOffsetForDv = runInfo.qPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.dv;
-    compatRunInfo.lastBatchTotalS2BOffsetForDv = runInfo.kvPrefix * smallSDConstInfo.n2Size * smallSDConstInfo.dv;
-    compatRunInfo.lastBatchTotalS1S2SizeAlign = runInfo.s1s2AlignPrefix;
-    compatRunInfo.lastBatchTotalS1S2Size = runInfo.s1s2Prefix;
-    compatRunInfo.lastBatchTotalS2Size = runInfo.kvPrefix;
-}
-
-template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::SetSmallSDPreloadArgs(
-    FagRunInfo &compatRunInfo, const SmallSDRunInfo &nextRunInfo, bool hasNext)
+    const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo, bool hasNext)
 {
     this->preloadArgs.copyNext = hasNext;
-    this->preloadArgs.copyCurrent = compatRunInfo.commonRunInfo.taskId == 0;
-    compatRunInfo.isNextS2IdxNoChange = false;
+    this->preloadArgs.copyCurrent = runInfo.taskId == 0;
     if (!hasNext) {
         return;
     }
@@ -318,18 +268,14 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::ProcessVec1SmallSD(
     const SmallSDRunInfo &runInfo)
 {
-    FagRunInfo compatRunInfo;
-    BuildCompatRunInfo(compatRunInfo, runInfo);
-    this->vecBlock.ProcessVec1SmallSD(smallSDConstInfo, this->constInfo, compatRunInfo);
+    this->vecBlock.ProcessVec1SmallSD(smallSDConstInfo, runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::IssueMm1Mm2SmallSD(
     const SmallSDRunInfo &runInfo, const SmallSDRunInfo &nextRunInfo, bool hasNext, bool &needSyncDkMM)
 {
-    FagRunInfo compatRunInfo;
-    BuildCompatRunInfo(compatRunInfo, runInfo);
-    SetSmallSDPreloadArgs(compatRunInfo, nextRunInfo, hasNext);
+    SetSmallSDPreloadArgs(runInfo, nextRunInfo, hasNext);
 
     if constexpr (KernelBaseClass::IS_DK_WRITE_UB) {
         if ASCEND_IS_AIC {
@@ -340,42 +286,33 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
         }
     }
 
-    LocalTensor<CALC_TYPE> mm2ResTensor =
-        this->mm2ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-    this->cubeBlock.IterateMmQKSmallSD(mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo,
-                                       this->preloadArgs);
+    LocalTensor<CALC_TYPE> mm2ResTensor = this->mm2ResBuf[runInfo.taskId & 1].template Get<CALC_TYPE>();
+    this->cubeBlock.IterateMmQKSmallSD(mm2ResTensor, smallSDConstInfo, runInfo, this->preloadArgs);
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C2_TO_V2_FLAG[runInfo.taskId & 1]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C2_TO_V2_FLAG[runInfo.taskId & 1]);
     }
 
-    LocalTensor<CALC_TYPE> mm1ResTensor =
-        this->mm1ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-    this->cubeBlock.IterateMmDyVSmallSD(mm1ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo,
-                                        this->preloadArgs);
+    LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.taskId & 1].template Get<CALC_TYPE>();
+    this->cubeBlock.IterateMmDyVSmallSD(mm1ResTensor, smallSDConstInfo, runInfo, this->preloadArgs);
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V2_FLAG[runInfo.taskId & 1]);
         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C1_TO_V2_FLAG[runInfo.taskId & 1]);
     }
 
-    this->vecBlock.CopyMaxSumSmallSD(smallSDConstInfo, this->constInfo, compatRunInfo, runInfo.taskId);
+    this->vecBlock.CopyMaxSumSmallSD(smallSDConstInfo, runInfo, runInfo.taskId);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBlockType>::ComputeDqkvSmallSD(
     const SmallSDRunInfo &runInfo, bool &needSyncDkMM, int64_t taskId)
 {
-    FagRunInfo compatRunInfo;
-    BuildCompatRunInfo(compatRunInfo, runInfo);
-
-    LocalTensor<CALC_TYPE> mm1ResTensor =
-        this->mm1ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
-    LocalTensor<CALC_TYPE> mm2ResTensor =
-        this->mm2ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> mm1ResTensor = this->mm1ResBuf[runInfo.taskId & 1].template Get<CALC_TYPE>();
+    LocalTensor<CALC_TYPE> mm2ResTensor = this->mm2ResBuf[runInfo.taskId & 1].template Get<CALC_TYPE>();
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C2_TO_V2_FLAG[(taskId + 1) & 1]);
     }
-    this->vecBlock.ProcessVec2SmallSD(mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+    this->vecBlock.ProcessVec2SmallSD(mm2ResTensor, smallSDConstInfo, runInfo);
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
     }
@@ -386,14 +323,13 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     }
     MutexBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = this->dSL1Buf.Get();
     MutexBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buffer = this->pL1Buf.Get();
-    this->vecBlock.ProcessVec3SmallSD(dSL1Buffer, mm1ResTensor, mm2ResTensor, smallSDConstInfo, this->constInfo,
-                                      compatRunInfo);
+    this->vecBlock.ProcessVec3SmallSD(dSL1Buffer, mm1ResTensor, mm2ResTensor, smallSDConstInfo, runInfo);
     if ASCEND_IS_AIV {
         if (needSyncDkMM) {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C5_TO_V4_FLAG);
         }
     }
-    this->vecBlock.ProcessVec4SmallSD(pL1Buffer, mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+    this->vecBlock.ProcessVec4SmallSD(pL1Buffer, mm2ResTensor, smallSDConstInfo, runInfo);
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V3_TO_C3_FLAG);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V4_TO_C5_FLAG);
@@ -407,9 +343,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     }
 
     if constexpr (KernelBaseClass::IS_DQ_WRITE_UB) {
-        mm1ResTensor = this->mm1ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+        mm1ResTensor = this->mm1ResBuf[runInfo.taskId & 1].template Get<CALC_TYPE>();
         this->cubeBlock.template IterateMmDsKSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB>(
-            mm1ResTensor, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+            mm1ResTensor, dSL1Buffer, smallSDConstInfo, runInfo);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -417,10 +353,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
             CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C3_TO_V5_FLAG);
         }
         this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
-            mm1ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+            mm1ResTensor, smallSDConstInfo, runInfo);
     } else {
         this->cubeBlock.template IterateMmDsKSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB>(
-            this->dqWorkSpaceGm, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+            this->dqWorkSpaceGm, dSL1Buffer, smallSDConstInfo, runInfo);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V5_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C3_TO_V5_FLAG);
@@ -428,13 +364,13 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C3_TO_V5_FLAG);
         }
         this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DQ_WRITE_UB, DQ_IDX>(
-            this->dqWorkSpaceGm, smallSDConstInfo, this->constInfo, compatRunInfo);
+            this->dqWorkSpaceGm, smallSDConstInfo, runInfo);
     }
 
     if constexpr (KernelBaseClass::IS_DK_WRITE_UB) {
-        mm2ResTensor = this->mm2ResBuf[compatRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
+        mm2ResTensor = this->mm2ResBuf[runInfo.taskId & 1].template Get<CALC_TYPE>();
         this->cubeBlock.template IterateMmDsQSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB>(
-            mm2ResTensor, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+            mm2ResTensor, dSL1Buffer, smallSDConstInfo, runInfo);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -442,7 +378,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
             CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C4_TO_V6_FLAG);
         }
         this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB, DK_IDX>(
-            mm2ResTensor, smallSDConstInfo, this->constInfo, compatRunInfo);
+            mm2ResTensor, smallSDConstInfo, runInfo);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
@@ -452,7 +388,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
         }
     } else {
         this->cubeBlock.template IterateMmDsQSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB>(
-            this->dkWorkSpaceGm, dSL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+            this->dkWorkSpaceGm, dSL1Buffer, smallSDConstInfo, runInfo);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C4_TO_V6_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SYNC_C4_TO_V6_FLAG);
@@ -460,7 +396,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C4_TO_V6_FLAG);
         }
         this->vecBlock.template ProcessMulsAndCastSmallSD<CALC_TYPE, KernelBaseClass::IS_DK_WRITE_UB, DK_IDX>(
-            this->dkWorkSpaceGm, smallSDConstInfo, this->constInfo, compatRunInfo);
+            this->dkWorkSpaceGm, smallSDConstInfo, runInfo);
         if ASCEND_IS_AIC {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C4_TO_V3_FLAG);
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C4_TO_V3_FLAG);
@@ -468,7 +404,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelSmallSD<CubeBlockType, VecBl
     }
 
     this->cubeBlock.template IterateMmPDySmallSD<OUTDTYPE, KernelBaseClass::IS_DV_WRITE_UB>(
-        this->dvGm, pL1Buffer, smallSDConstInfo, this->constInfo, compatRunInfo);
+        this->dvGm, pL1Buffer, smallSDConstInfo, runInfo);
     if ASCEND_IS_AIC {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
