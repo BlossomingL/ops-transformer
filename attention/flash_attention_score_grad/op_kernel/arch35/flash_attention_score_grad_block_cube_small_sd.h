@@ -40,8 +40,7 @@ public:
     constexpr static bool ENABLE_UNITFLAG =
         HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned768) && !IS_DETER_OLD(DETER_SPARSE_TYPE);
     __aicore__ inline FAGBlockCubeSmallSD(){};
-    __aicore__ inline void SetCubeBlockParams(TPipe *pipe, FagTilingType tilingData,
-                                              MutexBufferManager<BufferType::L1> *l1BuffMgr);
+    __aicore__ inline void SetCubeBlockParams(TPipe *pipe, MutexBufferManager<BufferType::L1> *l1BuffMgr);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR queryRope,
                                             GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace);
     template <typename InitInfo>
@@ -71,7 +70,6 @@ private:
     GlobalTensor<INPUT_TYPE> queryGm, keyGm, valueGm, queryRopeGm, keyRopeGm;
     GlobalTensor<OUTDTYPE> dyGm;
     TPipe *pipe;
-    FagTilingType tilingData;
     MutexBufferManager<BufferType::L1> *l1BufferManagerPtr;
     typename std::conditional<IS_L1_REUSE,
                               typename DyL1BuffSelector<IS_L1_REUSE, IS_L1_PRELOAD, false>::TYPE,
@@ -101,10 +99,9 @@ private:
 
 TEMPLATES_DEF
 __aicore__ inline void FAGBlockCubeSmallSD<TEMPLATE_ARGS>::SetCubeBlockParams(
-    TPipe *pipe, FagTilingType tilingData, MutexBufferManager<BufferType::L1> *l1BuffMgr)
+    TPipe *pipe, MutexBufferManager<BufferType::L1> *l1BuffMgr)
 {
     this->pipe = pipe;
-    this->tilingData = tilingData;
     this->l1BufferManagerPtr = l1BuffMgr;
 }
 
@@ -691,8 +688,7 @@ TEMPLATES_DEF
 class FAGBlockCubeSmallSDDummy {
 public:
     __aicore__ inline FAGBlockCubeSmallSDDummy(){};
-    __aicore__ inline void SetCubeBlockParams(TPipe *pipe, FagTilingType tilingData,
-                                              MutexBufferManager<BufferType::L1> *l1BuffMgr){};
+    __aicore__ inline void SetCubeBlockParams(TPipe *pipe, MutexBufferManager<BufferType::L1> *l1BuffMgr){};
     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR dy, GM_ADDR queryRope,
                                             GM_ADDR keyRope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace){};
     template <typename InitInfo>

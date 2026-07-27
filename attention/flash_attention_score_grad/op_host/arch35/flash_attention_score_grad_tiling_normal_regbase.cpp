@@ -1448,15 +1448,11 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitSmallSDTilingDat
         OP_CHECK_IF(smallSDTndTilingData_ == nullptr,
                     OP_LOGE("InitSmallSDTilingData", "InitSmallSDTilingData failed."),
                     return ge::GRAPH_FAILED);
-        auto *tilingData = &smallSDTndTilingData_->fagTilingData;
-        TND_TILING_DATA_COMMON_ASSIGN(tilingData);
     } else {
         smallSDTilingData_ = context_->GetTilingData<FlashAttentionScoreGradSmallSDTilingData<false>>();
         OP_CHECK_IF(smallSDTilingData_ == nullptr,
                     OP_LOGE("InitSmallSDTilingData", "InitSmallSDTilingData failed."),
                     return ge::GRAPH_FAILED);
-        auto *tilingData = &smallSDTilingData_->fagTilingData;
-        BASE_TILING_DATA_COMMON_ASSIGN(tilingData);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1680,6 +1676,13 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     size_t workspaceSize = 0;
     workspaceSize = RESERVED_WORKSPACE_SIZE;
+    if (fBaseParams.isSmallSD) {
+        workspaceSize += WORKSPACE_BUFFER;
+        workspaces[0] = workspaceSize;
+        SetSmallSDWorkspaceSize(static_cast<uint64_t>(workspaceSize));
+        return ge::GRAPH_SUCCESS;
+    }
+
     int64_t qSize =
         ((fBaseParams.b * fBaseParams.n1 - 1) * fBaseParams.s1 + AlignTo(fBaseParams.s1, ALIGN128)) * fBaseParams.d;
     int64_t kSize =
@@ -1785,9 +1788,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetWorkspaceSize()
 
     workspaceSize += WORKSPACE_BUFFER;
     workspaces[0] = workspaceSize;
-    if (fBaseParams.isSmallSD) {
-        SetSmallSDWorkspaceSize(static_cast<uint64_t>(workspaceSize));
-    }
     return ge::GRAPH_SUCCESS;
 }
 

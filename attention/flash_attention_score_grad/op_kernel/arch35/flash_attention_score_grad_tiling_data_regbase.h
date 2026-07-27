@@ -701,8 +701,6 @@ public:
 template<const bool isTnd = false>
 class FlashAttentionScoreGradSmallSDTilingData {
 public:
-    using FagTilingData = FlashAttentionScoreGradTilingDataUs1s2Bbn2gs1s2Regbase<false, false, isTnd, false>;
-    FagTilingData fagTilingData;
     SmallSDBaseParamRegbase baseParam;
     SmallSDStrideParamRegbase strideParam;
     SmallSDCoreTaskParamRegbase coreTaskParam[SMALL_SD_MAX_AIC];

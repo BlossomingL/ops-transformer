@@ -39,10 +39,7 @@ public:
     constexpr static uint32_t INPUT_BLOCK_NUM_FOR_OUT_DTYPE = 32 / sizeof(OUTDTYPE);
     constexpr static uint32_t FRACTAL_NZ_C0_SIZE_FOR_OUT_DTYPE = 32 / sizeof(OUTDTYPE);
     __aicore__ inline FAGBlockVecSmallSD(){};
-    __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
-                                             uint32_t cBlockIdx, uint32_t vSubBlockIdx,
-                                             AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo,
-                                             DropMaskInfo &dropInfo);
+    __aicore__ inline void SetVecBlockParams(TPipe *pipe, uint32_t vSubBlockIdx);
     __aicore__ inline void InitGlobalBuffer(GM_ADDR value, GM_ADDR dy, GM_ADDR y, GM_ADDR pseShift, GM_ADDR dropMask,
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
@@ -72,7 +69,6 @@ public:
 private:
     uint32_t vSubBlockIdxForCompat = 0;
     TPipe *pipe;
-    FagTilingType tilingData;
     GlobalTensor<INPUT_TYPE> valueGm;
     GlobalTensor<OUTDTYPE> yGm, dyGm;
     GlobalTensor<float> softmaxMaxGm, softmaxSumGm;
@@ -87,12 +83,10 @@ private:
 
 TEMPLATES_DEF
 __aicore__ inline void FAGBlockVecSmallSD<TEMPLATE_ARGS>::SetVecBlockParams(
-    TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx, uint32_t cBlockIdx, uint32_t vSubBlockIdx,
-    AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo, DropMaskInfo &dropInfo)
+    TPipe *pipe, uint32_t vSubBlockIdx)
 {
     vSubBlockIdxForCompat = vSubBlockIdx;
     this->pipe = pipe;
-    this->tilingData = tilingData;
 }
 
 TEMPLATES_DEF
@@ -364,10 +358,7 @@ public:
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
                                             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope,
                                             GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace){};
-    __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
-                                             uint32_t cBlockIdx, uint32_t vSubBlockIdx,
-                                             AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo,
-                                             DropMaskInfo &dropInfo){};
+    __aicore__ inline void SetVecBlockParams(TPipe *pipe, uint32_t vSubBlockIdx){};
     __aicore__ inline void ProcessVec1SmallSD(const SmallSDConstInfo &smallSDConstInfo,
                                              const SmallSDRunInfo &runInfo){};
     __aicore__ inline void CopyMaxSumSmallSD(const SmallSDConstInfo &smallSDConstInfo,
