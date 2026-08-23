@@ -485,6 +485,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     uint32_t tndMaxSumLayout = 0; // 0: BNS8, 1: TND
     bool enablePreSfmg = 0;
     bool isNzOut = false;
+    bool isSmallSD = false;
 };
 
 template <class T>

@@ -59,6 +59,8 @@ public:
     DeterParamRegbase *deterParam = nullptr;
     TndParamRegbase *tndParam_ = nullptr;
     TndSwizzleParamRegbase *tndSwizzleParam_ = nullptr;
+    FlashAttentionScoreGradSmallSDTilingData<false> *smallSDTilingData_ = nullptr;
+    FlashAttentionScoreGradSmallSDTilingData<true> *smallSDTndTilingData_ = nullptr;
 
 protected:
     bool IsCapable() override;
@@ -90,6 +92,17 @@ protected:
     uint64_t DoPreSfmgTiling();
     void DoPostTiling();
     ge::graphStatus SaveToTilingData();
+    bool IsSmallSDEligible() const;
+    void ResetSmallSDDerivedState();
+    void BuildSmallSDTaskRange();
+    ge::graphStatus ValidateSmallSDInvariant() const;
+    ge::graphStatus InitSmallSDTilingData(bool isTnd);
+    ge::graphStatus BuildSmallSDTilingData();
+    void BuildSmallSDCoreRange();
+    void BuildSmallSDNormalOffsets();
+    bool BuildSmallSDTndOffsets();
+    ge::graphStatus SaveSmallSDTilingData();
+    void SetSmallSDWorkspaceSize(uint64_t workspaceSize);
     ge::graphStatus GetSparsePrefixBlockInfo();
     virtual ge::graphStatus GetSparseUnpadBlockInfo(){};
     virtual bool GetBlockInfoOfBNS4TND(){};
@@ -107,6 +120,10 @@ protected:
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch = NpuArch::DAV_RESV;
     TndBaseInfo tndBaseInfo;
+    SmallSDBaseParamRegbase smallSDBaseParam_ = {};
+    SmallSDStrideParamRegbase smallSDStrideParam_ = {};
+    SmallSDCoreTaskParamRegbase smallSDCoreParams_[SMALL_SD_MAX_AIC] = {};
+    SmallSDTndCoreParamRegbase smallSDTndCoreParams_[SMALL_SD_MAX_AIC] = {};
 };
 
 } // namespace fag
